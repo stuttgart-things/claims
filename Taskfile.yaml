@@ -11,8 +11,10 @@ includes:
     taskfile: https://raw.githubusercontent.com/stuttgart-things/tasks/refs/heads/main/git/git.yaml
   lint:
     taskfile: https://raw.githubusercontent.com/stuttgart-things/tasks/refs/heads/main/git/linting.yaml
-  go:
+  goLint:
     taskfile: https://raw.githubusercontent.com/stuttgart-things/tasks/refs/heads/main/go/lint.yaml
+  goBuild:
+    taskfile: https://raw.githubusercontent.com/stuttgart-things/tasks/refs/heads/main/go/build.yaml
 
 tasks:
   do:
@@ -24,3 +26,24 @@ tasks:
 
         # Run the selected task
         [ -n "$task_name" ] && task "$task_name"
+
+  build:
+    desc: Build binary using Dagger with ldflags
+    vars:
+      VERSION: '{{.VERSION | default "0.0.1"}}'
+      OS: '{{.OS | default "linux"}}'
+      ARCH: '{{.ARCH | default "amd64"}}'
+      OUTPUT_PATH: '{{.OUTPUT_PATH | default "/tmp/go/build/"}}'
+    cmds:
+      - |
+        dagger call -m github.com/stuttgart-things/dagger/go build-binary \
+          --src "." \
+          --go-version "1.25.6" \
+          --os {{ .OS }} \
+          --arch {{ .ARCH }} \
+          --package-name {{ .MODULE }} \
+          --ldflags "cmd.version={{ .VERSION }}; cmd.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ); cmd.commit=$(git rev-parse --short HEAD 2>/dev/null || echo 'none')" \
+          --go-main-file main.go \
+          --bin-name {{ .PROJECT }} \
+          export --path={{ .OUTPUT_PATH }} \
+          --progress plain -vv

@@ -113,7 +113,24 @@ func runRender(cmd *cobra.Command, args []string) {
 		apiURL = "http://localhost:8080"
 	}
 
-	fmt.Printf("Connecting to API: %s\n\n", apiURL)
+	// Allow user to confirm or change API URL
+	apiURLInput := apiURL
+	apiForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("API URL").
+				Description("Confirm or change the API endpoint").
+				Value(&apiURLInput),
+		),
+	)
+
+	if err := apiForm.Run(); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	apiURL = apiURLInput
+
+	fmt.Printf("\nConnecting to API: %s\n\n", apiURL)
 
 	// Create HTTP client
 	client := &http.Client{Timeout: 30 * time.Second}
