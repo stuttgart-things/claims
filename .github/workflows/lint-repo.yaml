@@ -1,0 +1,27 @@
+---
+name: Run Repository Linting
+on:
+  push:
+    branches:
+      - main
+      - feat/*
+      - fix/*
+  pull_request:
+    branches:
+      - main
+      - feat/*
+      - fix/*
+
+jobs:
+  Lint-Repository:
+    uses: stuttgart-things/github-workflow-templates/.github/workflows/call-repository-linting.yaml@main
+    with:
+      runs-on: ubuntu-latest
+      environment-name: linting
+      app-directory: "./"
+      output-file: "/tmp/claims.txt"
+      continue-error: "true"
+      dagger-version: v0.19.9
+      dagger-module-version: v1.17.0
+      branch-name: ${{ github.head_ref || github.ref_name }}
+    secrets: inherit # pragma: allowlist secret

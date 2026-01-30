@@ -1,0 +1,26 @@
+---
+version: "3"
+
+vars:
+  PROJECT: claims
+  MODULE: github.com/stuttgart-things/claims
+  BIN_DIR: ./bin
+
+includes:
+  git:
+    taskfile: https://raw.githubusercontent.com/stuttgart-things/tasks/refs/heads/main/git/git.yaml
+  lint:
+    taskfile: https://raw.githubusercontent.com/stuttgart-things/tasks/refs/heads/main/git/linting.yaml
+  go:
+    taskfile: https://raw.githubusercontent.com/stuttgart-things/tasks/refs/heads/main/go/lint.yaml
+
+tasks:
+  do:
+    desc: Select a task to run
+    cmds:
+      - |
+        # Extract task names (keep internal colons, remove only trailing colon)
+        task_name=$(task -l | awk '/^\*/ {print $2}' | sed 's/:$//' | gum choose)
+
+        # Run the selected task
+        [ -n "$task_name" ] && task "$task_name"

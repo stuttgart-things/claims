@@ -1,0 +1,16 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: claims
+  description: terminal-based user for rendering claims
+  annotations:
+    github.com/project-slug: stuttgart-things/claims
+    backstage.io/techdocs-ref: dir:.
+  tags:
+    - golang
+    - service
+spec:
+  type: service
+  lifecycle: experimental
+  owner: group:default/platform-team

@@ -1,0 +1,8 @@
+site_name: claims
+site_description: terminal-based user for rendering claims
+
+nav:
+  - Home: index.md
+
+plugins:
+  - techdocs-core
