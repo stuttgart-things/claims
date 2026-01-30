@@ -45,6 +45,7 @@ Thumbs.db
 /bin/
 /dist/
 /build/
+/claims
 
 # Debug files
 debug

@@ -1,11 +1,12 @@
 # claims
 
-terminal-based user for rendering claims
+Terminal-based CLI for rendering claims via the claim-machinery API.
 
 ## Prerequisites
 
 - Go 1.25.6+
 - [Task](https://taskfile.dev/) (optional, for task automation)
+- claim-machinery API running (default: `http://localhost:8080`)
 
 ## Getting Started
 
@@ -17,11 +18,46 @@ cd claims
 # Install dependencies
 go mod tidy
 
-# Run the application
-go run .
-# or with Task
-task run
+# Build and run
+go build -o claims .
+./claims render
 ```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `claims render` | Interactively render a claim template via API |
+| `claims version` | Print version information |
+
+### render
+
+```bash
+claims render [flags]
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--api-url` | `-a` | API URL (default: `$CLAIM_API_URL` or `http://localhost:8080`) |
+
+**Examples:**
+
+```bash
+# Use default API URL
+claims render
+
+# Custom API URL
+claims render --api-url http://api.example.com:8080
+
+# Via environment variable
+CLAIM_API_URL=http://api.example.com:8080 claims render
+```
+
+## Configuration
+
+| Environment Variable | Description | Default |
+|---------------------|-------------|---------|
+| `CLAIM_API_URL` | API base URL | `http://localhost:8080` |
 
 ## Available Tasks
 
@@ -45,6 +81,11 @@ task --list
 ```
 .
 ├── main.go           # Application entry point
+├── cmd/
+│   ├── root.go       # Root command setup
+│   ├── render.go     # Render command implementation
+│   ├── version.go    # Version command
+│   └── logo.go       # ASCII logo rendering
 ├── go.mod            # Go module definition
 ├── Taskfile.yaml     # Task automation
 ├── catalog-info.yaml # Backstage component definition
