@@ -105,6 +105,8 @@ func init() {
 }
 
 func runRender(cmd *cobra.Command, args []string) {
+	fmt.Println(logo)
+
 	// Get API URL from flag, environment, or default
 	if apiURL == "" {
 		apiURL = os.Getenv("CLAIM_API_URL")
