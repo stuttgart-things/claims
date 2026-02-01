@@ -4,7 +4,7 @@ Terminal-based CLI for rendering claims via the claim-machinery API.
 
 ## Prerequisites
 
-- Go 1.25.6+
+- Go 1.25.5+
 - [Task](https://taskfile.dev/) (optional, for task automation)
 - claim-machinery API running (default: `http://localhost:8080`)
 
