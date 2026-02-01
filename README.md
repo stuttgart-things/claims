@@ -100,3 +100,7 @@ task --list
 ## License
 
 See [LICENSE](LICENSE) for details.
+
+## Author
+
+patrick hermann
