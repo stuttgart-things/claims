@@ -2,26 +2,31 @@
 
 Terminal-based CLI for rendering claims via the claim-machinery API.
 
-## Prerequisites
+<details>
+<summary><strong>DEV</strong></summary>
+
+### Prerequisites
 
 - Go 1.25.5+
-- [Task](https://taskfile.dev/) (optional, for task automation)
-- claim-machinery API running (default: `http://localhost:8080`)
+- [Task](https://taskfile.dev/) (optional, für Task-Automatisierung)
+- claim-machinery API läuft (Standard: `http://localhost:8080`)
 
-## Getting Started
+### CLONE + RUN
 
 ```bash
-# Clone the repository
+# Repository klonen
 git clone https://github.com/stuttgart-things/claims.git
 cd claims
 
-# Install dependencies
+# Abhängigkeiten installieren
 go mod tidy
 
-# Build and run
+# Bauen und starten
 go build -o claims .
 ./claims render
 ```
+
+</details>
 
 ## Commands
 
