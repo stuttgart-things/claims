@@ -48,6 +48,23 @@ tasks:
           BIN_NAME: "{{ .PROJECT }}"
           OUTPUT_PATH: "{{ .OUTPUT_PATH }}"
 
+  render:
+    desc: Run render in non-interactive mode with test params
+    vars:
+      PARAMS_FILE: '{{.PARAMS_FILE | default "tests/params.yaml"}}'
+      OUTPUT_DIR: '{{.OUTPUT_DIR | default "output"}}'
+    cmds:
+      - go run . render --non-interactive -f {{.PARAMS_FILE}} -o {{.OUTPUT_DIR}}
+
+  render-inline:
+    desc: Run render in non-interactive mode with inline template and params
+    vars:
+      TEMPLATE: '{{.TEMPLATE | default "vspherevm"}}'
+      PARAMS: '{{.PARAMS | default "name=test"}}'
+      OUTPUT_DIR: '{{.OUTPUT_DIR | default "output"}}'
+    cmds:
+      - go run . render --non-interactive -t {{.TEMPLATE}} -p {{.PARAMS}} -o {{.OUTPUT_DIR}}
+
   release:
     desc: Release binary via goreleaser using Dagger
     cmds:
