@@ -1,0 +1,10 @@
+apiVersion: resources.stuttgart-things.com/v1alpha1
+kind: HarborProject
+metadata:
+  name: demo-project
+spec:
+  harborURL: https://harbor.idp.kubermatic.sva.dev
+  projectName: demo-project1
+  storageQuota: -1
+  providerConfigRef: default
+  harborInsecure: false
