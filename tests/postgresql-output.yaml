@@ -1,0 +1,16 @@
+apiVersion: resources.stuttgart-things.com/v1alpha1
+kind: VolumeClaim
+metadata:
+  annotations:
+    example.com/managed-by: kcl-test
+  name: demo-pvc
+  namespace: databases
+spec:
+  accessModes:
+  - ReadWriteOnce
+  namespace: databases
+  providerConfigRef: default-k8s
+  pvcName: demo-pvc
+  storage: '20Gi'
+  storageClassName: standard
+  volumeMode: Filesystem
