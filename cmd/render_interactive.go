@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"math/rand"
-	"os"
 	"strconv"
 
 	"github.com/charmbracelet/huh"
@@ -38,13 +37,18 @@ type TemplateParams struct {
 	Params       map[string]any
 }
 
+// runInteractive runs the render command in interactive mode
+func runInteractive(config *RenderConfig) error {
+	client := templates.NewClient(config.APIUrl)
+	return runInteractiveRender(client, config)
+}
+
 // runInteractiveRender runs the interactive render flow
-func runInteractiveRender(client *templates.Client) {
+func runInteractiveRender(client *templates.Client, config *RenderConfig) error {
 	// Fetch templates from API
 	templateList, err := client.FetchTemplates()
 	if err != nil {
-		fmt.Println(errorStyle.Render(fmt.Sprintf("Failed to fetch templates: %v", err)))
-		os.Exit(1)
+		return fmt.Errorf("failed to fetch templates: %w", err)
 	}
 
 	fmt.Printf("Loaded %d templates from API\n\n", len(templateList))
@@ -55,23 +59,21 @@ func runInteractiveRender(client *templates.Client) {
 		templateMap[t.Metadata.Name] = &templateList[i]
 	}
 
-	// Select templates (multi-select or use flag values)
+	// Select templates (multi-select or use config values)
 	var selectedNames []string
-	if len(templateNames) > 0 {
+	if len(config.Templates) > 0 {
 		// Validate provided template names
-		for _, name := range templateNames {
+		for _, name := range config.Templates {
 			if _, exists := templateMap[name]; !exists {
-				fmt.Println(errorStyle.Render(fmt.Sprintf("Template not found: %s", name)))
-				os.Exit(1)
+				return fmt.Errorf("template not found: %s", name)
 			}
 		}
-		selectedNames = templateNames
+		selectedNames = config.Templates
 	} else {
 		// Interactive multi-select
 		selectedNames, err = selectTemplates(templateList)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("selecting templates: %w", err)
 		}
 	}
 
@@ -80,8 +82,7 @@ func runInteractiveRender(client *templates.Client) {
 	// Collect parameters for each selected template
 	allParams, err := collectAllParams(selectedNames, templateMap)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("collecting parameters: %w", err)
 	}
 
 	// Confirm before rendering
@@ -98,13 +99,12 @@ func runInteractiveRender(client *templates.Client) {
 	)
 
 	if err := confirmForm.Run(); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("confirmation form: %w", err)
 	}
 
 	if !confirm {
 		fmt.Println("Cancelled.")
-		os.Exit(0)
+		return nil
 	}
 
 	// Render all templates
@@ -115,8 +115,7 @@ func runInteractiveRender(client *templates.Client) {
 	for {
 		action, editIndex, err := ReviewResults(results)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("review: %w", err)
 		}
 
 		switch action {
@@ -158,7 +157,7 @@ func runInteractiveRender(client *templates.Client) {
 
 		case ReviewActionCancel:
 			fmt.Println("Cancelled.")
-			return
+			return nil
 		}
 
 		break // Exit review loop on continue
@@ -173,8 +172,7 @@ func runInteractiveRender(client *templates.Client) {
 	}
 
 	if successCount == 0 {
-		fmt.Println(errorStyle.Render("\nNo successful renders to save!"))
-		os.Exit(1)
+		return fmt.Errorf("no successful renders to save")
 	}
 
 	fmt.Println(successStyle.Render(fmt.Sprintf("\n%d/%d ready to save", successCount, len(results))))
@@ -183,33 +181,33 @@ func runInteractiveRender(client *templates.Client) {
 	var outputConfig OutputConfig
 
 	// Check if output flags were explicitly set (non-default values or dry-run)
-	if dryRun || outputDir != "/tmp" || singleFile || filenamePattern != "{{.template}}-{{.name}}.yaml" {
+	if config.DryRun || config.OutputDir != "/tmp" || config.SingleFile || config.FilenamePattern != "{{.template}}-{{.name}}.yaml" {
 		// Use flag values
 		outputConfig = OutputConfig{
-			Directory:       outputDir,
-			FilenamePattern: filenamePattern,
-			SingleFile:      singleFile,
-			DryRun:          dryRun,
+			Directory:       config.OutputDir,
+			FilenamePattern: config.FilenamePattern,
+			SingleFile:      config.SingleFile,
+			DryRun:          config.DryRun,
 		}
 	} else {
 		// Run interactive output form
-		config, err := runOutputForm()
+		formConfig, err := runOutputForm()
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("output configuration: %w", err)
 		}
-		if config == nil {
+		if formConfig == nil {
 			fmt.Println("Save cancelled.")
-			return
+			return nil
 		}
-		outputConfig = *config
+		outputConfig = *formConfig
 	}
 
 	// Write results using the output configuration
 	if err := WriteResults(results, outputConfig); err != nil {
-		fmt.Println(errorStyle.Render(fmt.Sprintf("Failed to save: %v", err)))
-		os.Exit(1)
+		return fmt.Errorf("writing output: %w", err)
 	}
+
+	return nil
 }
 
 // selectTemplates displays a multi-select form for template selection
