@@ -44,6 +44,7 @@ claims render [flags]
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--api-url` | `-a` | API URL (default: `$CLAIM_API_URL` or `http://localhost:8080`) |
+| `--templates` | `-t` | Templates to render (comma-separated or repeated) |
 | `--output-dir` | `-o` | Output directory for rendered files (default: `/tmp`) |
 | `--dry-run` | | Print output without writing files |
 | `--single-file` | | Combine all resources into one file |
@@ -72,6 +73,12 @@ claims render -o ./out --single-file
 
 # Custom filename pattern
 claims render -o ./out --filename-pattern "{{.name}}.yaml"
+
+# Render multiple templates (interactive params for each)
+claims render -t vsphere-vm -t postgres-db
+
+# Render multiple templates (comma-separated)
+claims render -t vsphere-vm,postgres-db -o ./out
 ```
 
 ## Configuration
