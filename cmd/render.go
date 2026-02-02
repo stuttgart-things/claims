@@ -9,11 +9,12 @@ import (
 )
 
 var (
-	apiURL          string
-	outputDir       string
-	dryRun          bool
-	singleFile      bool
-	filenamePattern string
+	apiURL           string
+	outputDir        string
+	dryRun           bool
+	singleFile       bool
+	filenamePattern  string
+	templateNames    []string
 )
 
 var renderCmd = &cobra.Command{
@@ -29,6 +30,7 @@ func init() {
 	renderCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print output without writing files")
 	renderCmd.Flags().BoolVar(&singleFile, "single-file", false, "Combine all resources into one file")
 	renderCmd.Flags().StringVar(&filenamePattern, "filename-pattern", "{{.template}}-{{.name}}.yaml", "Pattern for output filenames")
+	renderCmd.Flags().StringSliceVarP(&templateNames, "templates", "t", nil, "Templates to render (comma-separated or repeated)")
 	rootCmd.AddCommand(renderCmd)
 }
 

@@ -31,7 +31,17 @@ var (
 
 	errorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("196"))
+
+	progressStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("39")).
+			Bold(true)
 )
+
+// TemplateParams holds parameters for a single template
+type TemplateParams struct {
+	TemplateName string
+	Params       map[string]any
+}
 
 // runInteractiveRender runs the interactive render flow
 func runInteractiveRender(client *templates.Client) {
@@ -44,107 +54,49 @@ func runInteractiveRender(client *templates.Client) {
 
 	fmt.Printf("Loaded %d templates from API\n\n", len(templateList))
 
-	// Build template map and options for selection
+	// Build template map
 	templateMap := make(map[string]*templates.ClaimTemplate)
-	var templateOptions []huh.Option[string]
-
 	for i, t := range templateList {
 		templateMap[t.Metadata.Name] = &templateList[i]
-		label := fmt.Sprintf("%s - %s", t.Metadata.Name, t.Metadata.Title)
-		templateOptions = append(templateOptions, huh.NewOption(label, t.Metadata.Name))
 	}
 
-	// Step 1: Select template
-	var selectedTemplate string
-	selectForm := huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Select a template").
-				Description("Choose which claim template to render").
-				Options(templateOptions...).
-				Value(&selectedTemplate),
-		),
-	)
-
-	if err := selectForm.Run(); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	tmpl := templateMap[selectedTemplate]
-	fmt.Printf("\n%s\n", titleStyle.Render(tmpl.Metadata.Title))
-	fmt.Printf("%s\n\n", tmpl.Metadata.Description)
-
-	// Step 2: Build dynamic form based on template parameters
-	params := make(map[string]interface{})
-	paramValues := make(map[string]*string)
-
-	// Create form fields for each parameter
-	var formGroups []*huh.Group
-	var currentFields []huh.Field
-
-	for _, p := range tmpl.Spec.Parameters {
-		// Create a string pointer to hold the value (including hidden params)
-		defaultVal := ""
-		if p.Default != nil {
-			defaultVal = fmt.Sprintf("%v", p.Default)
+	// Select templates (multi-select or use flag values)
+	var selectedNames []string
+	if len(templateNames) > 0 {
+		// Validate provided template names
+		for _, name := range templateNames {
+			if _, exists := templateMap[name]; !exists {
+				fmt.Println(errorStyle.Render(fmt.Sprintf("Template not found: %s", name)))
+				os.Exit(1)
+			}
 		}
-		paramValues[p.Name] = &defaultVal
-
-		// Skip hidden parameters - they use their default value
-		if p.Hidden {
-			continue
-		}
-
-		field := createField(p, paramValues[p.Name])
-		if field != nil {
-			currentFields = append(currentFields, field)
-		}
-
-		// Group fields (max 5 per group for better UX)
-		if len(currentFields) >= 5 {
-			formGroups = append(formGroups, huh.NewGroup(currentFields...))
-			currentFields = nil
-		}
-	}
-
-	// Add remaining fields as final group
-	if len(currentFields) > 0 {
-		formGroups = append(formGroups, huh.NewGroup(currentFields...))
-	}
-
-	// Run the parameter form
-	if len(formGroups) > 0 {
-		paramForm := huh.NewForm(formGroups...)
-		if err := paramForm.Run(); err != nil {
+		selectedNames = templateNames
+	} else {
+		// Interactive multi-select
+		selectedNames, err = selectTemplates(templateList)
+		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
 	}
 
-	// Resolve random selections and collect non-empty values
-	for _, p := range tmpl.Spec.Parameters {
-		strVal := *paramValues[p.Name]
-		if strVal == "" {
-			continue
-		}
-		// If user selected random, pick a random enum value
-		if strVal == randomMarker && len(p.Enum) > 0 {
-			randomIdx := rand.Intn(len(p.Enum))
-			strVal = p.Enum[randomIdx]
-			fmt.Printf("Random selection for %s: %s\n", p.Name, strVal)
-		}
-		params[p.Name] = strVal
+	fmt.Printf("\nSelected %d template(s): %v\n", len(selectedNames), selectedNames)
+
+	// Collect parameters for each selected template
+	allParams, err := collectAllParams(selectedNames, templateMap)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
 
-	// Step 3: Confirm and render (default: Yes)
+	// Confirm before rendering
 	confirm := true
 	confirmForm := huh.NewForm(
 		huh.NewGroup(
 			huh.NewConfirm().
-				Title("Render the claim?").
+				Title(fmt.Sprintf("Render %d template(s)?", len(selectedNames))).
 				Description("This will call the API to generate YAML").
-				Affirmative("Yes, render it").
+				Affirmative("Yes, render").
 				Negative("Cancel").
 				Value(&confirm),
 		),
@@ -160,23 +112,27 @@ func runInteractiveRender(client *templates.Client) {
 		os.Exit(0)
 	}
 
-	// Call API to render
-	fmt.Println("\nCalling API to render...")
+	// Render all templates
+	fmt.Println("\nRendering templates...")
+	results := renderAllTemplates(client, allParams)
 
-	result, err := client.RenderTemplate(selectedTemplate, params)
-	if err != nil {
-		fmt.Println(errorStyle.Render(fmt.Sprintf("Render failed: %v", err)))
+	// Display results
+	displayResults(results)
+
+	// Check for errors
+	successCount := 0
+	for _, r := range results {
+		if r.Error == nil {
+			successCount++
+		}
+	}
+
+	if successCount == 0 {
+		fmt.Println(errorStyle.Render("\nAll renders failed!"))
 		os.Exit(1)
 	}
 
-	fmt.Println(successStyle.Render("\nRendered successfully!"))
-	fmt.Println(yamlStyle.Render(result))
-
-	// Get resource name for filename generation
-	resourceName := "output"
-	if name, ok := params["name"]; ok {
-		resourceName = fmt.Sprintf("%v", name)
-	}
+	fmt.Println(successStyle.Render(fmt.Sprintf("\n%d/%d rendered successfully!", successCount, len(results))))
 
 	// Build output config from flags or run interactive form
 	var outputConfig OutputConfig
@@ -204,17 +160,185 @@ func runInteractiveRender(client *templates.Client) {
 		outputConfig = *config
 	}
 
-	// Write using the output configuration
-	renderResult := RenderResult{
-		TemplateName: tmpl.Metadata.Name,
-		ResourceName: resourceName,
-		Content:      result,
-		Params:       params,
-	}
-
-	if err := WriteResults([]RenderResult{renderResult}, outputConfig); err != nil {
+	// Write results using the output configuration
+	if err := WriteResults(results, outputConfig); err != nil {
 		fmt.Println(errorStyle.Render(fmt.Sprintf("Failed to save: %v", err)))
 		os.Exit(1)
+	}
+}
+
+// selectTemplates displays a multi-select form for template selection
+func selectTemplates(available []templates.ClaimTemplate) ([]string, error) {
+	var selected []string
+
+	// Build options from available templates
+	options := make([]huh.Option[string], len(available))
+	for i, t := range available {
+		label := fmt.Sprintf("%s - %s", t.Metadata.Name, t.Metadata.Title)
+		options[i] = huh.NewOption(label, t.Metadata.Name)
+	}
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewMultiSelect[string]().
+				Title("Select templates to render").
+				Description("Space to select, Enter to confirm").
+				Options(options...).
+				Value(&selected).
+				Validate(func(s []string) error {
+					if len(s) == 0 {
+						return fmt.Errorf("select at least one template")
+					}
+					return nil
+				}),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		return nil, err
+	}
+
+	return selected, nil
+}
+
+// collectAllParams collects parameters for all selected templates
+func collectAllParams(selectedNames []string, templateMap map[string]*templates.ClaimTemplate) ([]TemplateParams, error) {
+	var allParams []TemplateParams
+
+	for i, name := range selectedNames {
+		tmpl := templateMap[name]
+
+		// Show progress header
+		fmt.Printf("\n%s\n", progressStyle.Render(
+			fmt.Sprintf("━━━ Configuring: %s (%d/%d) ━━━", tmpl.Metadata.Title, i+1, len(selectedNames)),
+		))
+		fmt.Printf("%s\n\n", tmpl.Metadata.Description)
+
+		// Collect params for this template
+		params, err := collectTemplateParams(tmpl)
+		if err != nil {
+			return nil, fmt.Errorf("collecting params for %s: %w", name, err)
+		}
+
+		allParams = append(allParams, TemplateParams{
+			TemplateName: name,
+			Params:       params,
+		})
+	}
+
+	return allParams, nil
+}
+
+// collectTemplateParams collects parameters for a single template
+func collectTemplateParams(tmpl *templates.ClaimTemplate) (map[string]any, error) {
+	params := make(map[string]any)
+	paramValues := make(map[string]*string)
+
+	// Create form fields for each parameter
+	var formGroups []*huh.Group
+	var currentFields []huh.Field
+
+	for _, p := range tmpl.Spec.Parameters {
+		// Initialize with default
+		defaultVal := ""
+		if p.Default != nil {
+			defaultVal = fmt.Sprintf("%v", p.Default)
+		}
+		paramValues[p.Name] = &defaultVal
+
+		// Skip hidden parameters
+		if p.Hidden {
+			continue
+		}
+
+		field := createField(p, paramValues[p.Name])
+		if field != nil {
+			currentFields = append(currentFields, field)
+		}
+
+		// Group fields (max 5 per group)
+		if len(currentFields) >= 5 {
+			formGroups = append(formGroups, huh.NewGroup(currentFields...))
+			currentFields = nil
+		}
+	}
+
+	if len(currentFields) > 0 {
+		formGroups = append(formGroups, huh.NewGroup(currentFields...))
+	}
+
+	if len(formGroups) > 0 {
+		paramForm := huh.NewForm(formGroups...)
+		if err := paramForm.Run(); err != nil {
+			return nil, err
+		}
+	}
+
+	// Resolve values
+	for _, p := range tmpl.Spec.Parameters {
+		strVal := *paramValues[p.Name]
+		if strVal == "" {
+			continue
+		}
+		// Handle random selection
+		if strVal == randomMarker && len(p.Enum) > 0 {
+			randomIdx := rand.Intn(len(p.Enum))
+			strVal = p.Enum[randomIdx]
+			fmt.Printf("Random selection for %s: %s\n", p.Name, strVal)
+		}
+		params[p.Name] = strVal
+	}
+
+	return params, nil
+}
+
+// renderAllTemplates renders all templates and returns results
+func renderAllTemplates(client *templates.Client, allParams []TemplateParams) []RenderResult {
+	var results []RenderResult
+
+	for _, tp := range allParams {
+		fmt.Printf("  Rendering %s... ", tp.TemplateName)
+
+		content, err := client.RenderTemplate(tp.TemplateName, tp.Params)
+		if err != nil {
+			fmt.Println(errorStyle.Render("failed"))
+			results = append(results, RenderResult{
+				TemplateName: tp.TemplateName,
+				Params:       tp.Params,
+				Error:        err,
+			})
+			continue
+		}
+
+		// Extract resource name for filename
+		resourceName := "output"
+		if name, ok := tp.Params["name"]; ok {
+			resourceName = fmt.Sprintf("%v", name)
+		}
+
+		fmt.Println(successStyle.Render("done"))
+		results = append(results, RenderResult{
+			TemplateName: tp.TemplateName,
+			ResourceName: resourceName,
+			Content:      content,
+			Params:       tp.Params,
+		})
+	}
+
+	return results
+}
+
+// displayResults shows the rendered YAML content
+func displayResults(results []RenderResult) {
+	fmt.Println("\n" + progressStyle.Render("━━━ Rendered Output ━━━"))
+
+	for _, r := range results {
+		if r.Error != nil {
+			fmt.Printf("\n%s: %s\n", r.TemplateName, errorStyle.Render(r.Error.Error()))
+			continue
+		}
+		fmt.Printf("\n%s (%s):\n", titleStyle.Render(r.TemplateName), r.ResourceName)
+		fmt.Println(yamlStyle.Render(r.Content))
 	}
 }
 
