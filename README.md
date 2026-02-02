@@ -45,10 +45,13 @@ claims render [flags]
 |------|-------|-------------|
 | `--api-url` | `-a` | API URL (default: `$CLAIM_API_URL` or `http://localhost:8080`) |
 | `--templates` | `-t` | Templates to render (comma-separated or repeated) |
+| `--params` | `-p` | Parameters as key=value pairs (comma-separated or repeated) |
+| `--params-file` | `-f` | YAML file with templates and parameters for batch rendering |
 | `--output-dir` | `-o` | Output directory for rendered files (default: `/tmp`) |
 | `--dry-run` | | Print output without writing files |
 | `--single-file` | | Combine all resources into one file |
 | `--filename-pattern` | | Pattern for output filenames (default: `{{.template}}-{{.name}}.yaml`) |
+| `--non-interactive` | | Run in non-interactive mode (for CI/CD automation) |
 
 **Examples:**
 
@@ -81,6 +84,37 @@ claims render -t vsphere-vm -t postgres-db
 claims render -t vsphere-vm,postgres-db -o ./out
 ```
 
+### Non-Interactive Mode (CI/CD)
+
+For automation and CI/CD pipelines, use `--non-interactive` mode:
+
+```bash
+# Single template with inline parameters
+claims render --non-interactive -t vspherevm -p name=my-vm -p cpu=4 -o ./out
+
+# Multiple parameters (comma-separated)
+claims render --non-interactive -t vspherevm -p name=my-vm,cpu=4,memory=8Gi
+
+# Batch rendering with params file
+claims render --non-interactive -f params.yaml -o ./out
+```
+
+**Params file format (`params.yaml`):**
+
+```yaml
+templates:
+  - name: vspherevm
+    parameters:
+      name: my-vm
+      cpu: 4
+      memory: 8Gi
+
+  - name: postgresql
+    parameters:
+      name: my-database
+      version: "15"
+```
+
 ## Interactive Workflow
 
 The `claims render` command follows an interactive workflow:
@@ -110,13 +144,25 @@ task --list
 | Task | Description |
 |------|-------------|
 | `task build` | Build the binary |
-| `task run` | Run the application |
-| `task test` | Run tests |
-| `task test-coverage` | Run tests with coverage report |
-| `task lint` | Run golangci-lint |
-| `task fmt` | Format code |
-| `task tidy` | Tidy and verify go modules |
-| `task clean` | Clean build artifacts |
+| `task render` | Run render in non-interactive mode with params file |
+| `task render-inline` | Run render in non-interactive mode with inline params |
+| `task release` | Release binary via goreleaser |
+
+**Testing non-interactive mode:**
+
+```bash
+# With params file (default: tests/params.yaml)
+task render
+
+# With custom params file
+task render PARAMS_FILE=my-params.yaml
+
+# With inline template and params
+task render-inline TEMPLATE=vspherevm PARAMS=name=test
+
+# With multiple params
+task render-inline TEMPLATE=vspherevm PARAMS="name=test,cpu=4"
+```
 
 ## Project Structure
 
@@ -127,6 +173,7 @@ task --list
 │   ├── root.go                # Root command setup
 │   ├── render.go              # Render command and flags
 │   ├── render_interactive.go  # Interactive form-based rendering
+│   ├── render_noninteractive.go # Non-interactive mode for CI/CD
 │   ├── render_review.go       # Review/preview step before saving
 │   ├── render_output.go       # File output logic (separate/single file, dry-run)
 │   ├── render_types.go        # Type definitions for render config/results
@@ -137,6 +184,8 @@ task --list
 │       ├── types.go           # API data models
 │       ├── client.go          # HTTP client for claim-machinery API
 │       └── client_test.go     # Client unit tests
+├── tests/
+│   └── params.yaml            # Example params file for testing
 ├── go.mod                     # Go module definition
 ├── Taskfile.yaml              # Task automation
 ├── catalog-info.yaml          # Backstage component definition

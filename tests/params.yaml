@@ -1,0 +1,11 @@
+templates:
+  - name: vspherevm
+    parameters:
+      name: my-vm
+      cpu: 4
+      memory: 8Gi
+
+  - name: postgresql
+    parameters:
+      name: my-database
+      version: "15"
