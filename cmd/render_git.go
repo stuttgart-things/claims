@@ -111,8 +111,18 @@ func executeGitOperations(results []RenderResult, config *RenderConfig) error {
 		if remote == "" {
 			remote = "origin"
 		}
+
+		// Get branch name to push
+		branch := config.GitConfig.Branch
+		if branch == "" {
+			branch, err = g.GetCurrentBranch()
+			if err != nil {
+				return fmt.Errorf("getting current branch: %w", err)
+			}
+		}
+
 		fmt.Printf("Pushing to %s...\n", remote)
-		if err := g.Push(remote); err != nil {
+		if err := g.Push(remote, branch); err != nil {
 			return err
 		}
 		fmt.Println(successStyle.Render("Pushed successfully"))
