@@ -44,6 +44,10 @@ claims render [flags]
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--api-url` | `-a` | API URL (default: `$CLAIM_API_URL` or `http://localhost:8080`) |
+| `--output-dir` | `-o` | Output directory for rendered files (default: `/tmp`) |
+| `--dry-run` | | Print output without writing files |
+| `--single-file` | | Combine all resources into one file |
+| `--filename-pattern` | | Pattern for output filenames (default: `{{.template}}-{{.name}}.yaml`) |
 
 **Examples:**
 
@@ -56,6 +60,18 @@ claims render --api-url http://api.example.com:8080
 
 # Via environment variable
 CLAIM_API_URL=http://api.example.com:8080 claims render
+
+# Save to custom directory
+claims render -o ./manifests
+
+# Dry run (preview without writing)
+claims render --dry-run
+
+# Combine all resources into single file
+claims render -o ./out --single-file
+
+# Custom filename pattern
+claims render -o ./out --filename-pattern "{{.name}}.yaml"
 ```
 
 ## Configuration
@@ -85,16 +101,24 @@ task --list
 
 ```
 .
-├── main.go           # Application entry point
+├── main.go                    # Application entry point
 ├── cmd/
-│   ├── root.go       # Root command setup
-│   ├── render.go     # Render command implementation
-│   ├── version.go    # Version command
-│   └── logo.go       # ASCII logo rendering
-├── go.mod            # Go module definition
-├── Taskfile.yaml     # Task automation
-├── catalog-info.yaml # Backstage component definition
-└── README.md         # This file
+│   ├── root.go                # Root command setup
+│   ├── render.go              # Render command and flags
+│   ├── render_interactive.go  # Interactive form-based rendering
+│   ├── render_output.go       # File output logic (separate/single file, dry-run)
+│   ├── render_types.go        # Type definitions for render config/results
+│   ├── version.go             # Version command
+│   └── logo.go                # ASCII logo rendering
+├── internal/
+│   └── templates/
+│       ├── types.go           # API data models
+│       ├── client.go          # HTTP client for claim-machinery API
+│       └── client_test.go     # Client unit tests
+├── go.mod                     # Go module definition
+├── Taskfile.yaml              # Task automation
+├── catalog-info.yaml          # Backstage component definition
+└── README.md                  # This file
 ```
 
 ## License

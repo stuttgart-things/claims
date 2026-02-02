@@ -172,31 +172,148 @@ func runInteractiveRender(client *templates.Client) {
 	fmt.Println(successStyle.Render("\nRendered successfully!"))
 	fmt.Println(yamlStyle.Render(result))
 
-	// Generate default save path
+	// Get resource name for filename generation
 	resourceName := "output"
 	if name, ok := params["name"]; ok {
 		resourceName = fmt.Sprintf("%v", name)
 	}
-	defaultSavePath := fmt.Sprintf("/tmp/%s-%s.yaml", tmpl.Metadata.Name, resourceName)
 
-	// Ask to save (with default path)
-	savePath := defaultSavePath
+	// Build output config from flags or run interactive form
+	var outputConfig OutputConfig
+
+	// Check if output flags were explicitly set (non-default values or dry-run)
+	if dryRun || outputDir != "/tmp" || singleFile || filenamePattern != "{{.template}}-{{.name}}.yaml" {
+		// Use flag values
+		outputConfig = OutputConfig{
+			Directory:       outputDir,
+			FilenamePattern: filenamePattern,
+			SingleFile:      singleFile,
+			DryRun:          dryRun,
+		}
+	} else {
+		// Run interactive output form
+		config, err := runOutputForm()
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		if config == nil {
+			fmt.Println("Save cancelled.")
+			return
+		}
+		outputConfig = *config
+	}
+
+	// Write using the output configuration
+	renderResult := RenderResult{
+		TemplateName: tmpl.Metadata.Name,
+		ResourceName: resourceName,
+		Content:      result,
+		Params:       params,
+	}
+
+	if err := WriteResults([]RenderResult{renderResult}, outputConfig); err != nil {
+		fmt.Println(errorStyle.Render(fmt.Sprintf("Failed to save: %v", err)))
+		os.Exit(1)
+	}
+}
+
+// runOutputForm runs the interactive output configuration form
+func runOutputForm() (*OutputConfig, error) {
+	var (
+		saveFile        bool   = true
+		outputMode      string = "separate"
+		outputDirectory string = "/tmp"
+		pattern         string = "{{.template}}-{{.name}}.yaml"
+	)
+
+	// First, ask if user wants to save
 	saveForm := huh.NewForm(
 		huh.NewGroup(
-			huh.NewInput().
+			huh.NewConfirm().
 				Title("Save to file?").
-				Description("Press Enter to use default, or clear to skip").
-				Value(&savePath),
+				Description("Save the rendered output to a file").
+				Affirmative("Yes").
+				Negative("No").
+				Value(&saveFile),
 		),
 	)
 
-	if err := saveForm.Run(); err == nil && savePath != "" {
-		if err := os.WriteFile(savePath, []byte(result), 0644); err != nil {
-			fmt.Printf("Failed to save: %v\n", err)
-		} else {
-			fmt.Printf("Saved to %s\n", savePath)
+	if err := saveForm.Run(); err != nil {
+		return nil, err
+	}
+
+	if !saveFile {
+		return nil, nil
+	}
+
+	// Ask for output configuration
+	configForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Output directory").
+				Description("Where to save rendered files").
+				Value(&outputDirectory),
+
+			huh.NewSelect[string]().
+				Title("Output mode").
+				Description("How should resources be organized?").
+				Options(
+					huh.NewOption("Separate files (one per resource)", "separate"),
+					huh.NewOption("Single file (combined with ---)", "single"),
+				).
+				Value(&outputMode),
+		),
+	)
+
+	if err := configForm.Run(); err != nil {
+		return nil, err
+	}
+
+	// For separate files, ask for filename pattern
+	if outputMode == "separate" {
+		patternForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewSelect[string]().
+					Title("Filename pattern").
+					Description("Pattern for output filenames").
+					Options(
+						huh.NewOption("{{template}}-{{name}}.yaml (default)", "{{.template}}-{{.name}}.yaml"),
+						huh.NewOption("{{name}}.yaml", "{{.name}}.yaml"),
+						huh.NewOption("Custom", "custom"),
+					).
+					Value(&pattern),
+			),
+		)
+
+		if err := patternForm.Run(); err != nil {
+			return nil, err
+		}
+
+		// If custom, prompt for pattern
+		if pattern == "custom" {
+			customForm := huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().
+						Title("Custom filename pattern").
+						Description("Use {{.template}} and {{.name}} as placeholders").
+						Placeholder("{{.template}}-{{.name}}.yaml").
+						Value(&pattern),
+				),
+			)
+
+			if err := customForm.Run(); err != nil {
+				return nil, err
+			}
 		}
 	}
+
+	return &OutputConfig{
+		Directory:       outputDirectory,
+		FilenamePattern: pattern,
+		SingleFile:      outputMode == "single",
+		DryRun:          false,
+	}, nil
 }
 
 // promptAPIURL prompts the user to confirm or change the API URL

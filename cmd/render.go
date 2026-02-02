@@ -8,7 +8,13 @@ import (
 	"github.com/stuttgart-things/claims/internal/templates"
 )
 
-var apiURL string
+var (
+	apiURL          string
+	outputDir       string
+	dryRun          bool
+	singleFile      bool
+	filenamePattern string
+)
 
 var renderCmd = &cobra.Command{
 	Use:   "render",
@@ -19,6 +25,10 @@ var renderCmd = &cobra.Command{
 
 func init() {
 	renderCmd.Flags().StringVarP(&apiURL, "api-url", "a", "", "API URL (default: $CLAIM_API_URL or http://localhost:8080)")
+	renderCmd.Flags().StringVarP(&outputDir, "output-dir", "o", "/tmp", "Output directory for rendered files")
+	renderCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print output without writing files")
+	renderCmd.Flags().BoolVar(&singleFile, "single-file", false, "Combine all resources into one file")
+	renderCmd.Flags().StringVar(&filenamePattern, "filename-pattern", "{{.template}}-{{.name}}.yaml", "Pattern for output filenames")
 	rootCmd.AddCommand(renderCmd)
 }
 
