@@ -1,0 +1,9 @@
+# Basic single-template parameter file
+# Usage: claims render --non-interactive -f examples/basic-params.yaml -o ./out
+
+template: vspherevm
+parameters:
+  name: my-vm
+  cpu: 4
+  memory: 8Gi
+  disk: 50Gi
