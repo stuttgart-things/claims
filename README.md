@@ -52,6 +52,15 @@ claims render [flags]
 | `--single-file` | | Combine all resources into one file |
 | `--filename-pattern` | | Pattern for output filenames (default: `{{.template}}-{{.name}}.yaml`) |
 | `--non-interactive` | | Run in non-interactive mode (for CI/CD automation) |
+| `--git-commit` | | Commit rendered files to git |
+| `--git-push` | | Push commits to remote (implies `--git-commit`) |
+| `--git-branch` | | Branch to use/create |
+| `--git-create-branch` | | Create the branch if it doesn't exist |
+| `--git-message` | | Commit message (default: auto-generated) |
+| `--git-remote` | | Git remote name (default: `origin`) |
+| `--git-repo-url` | | Clone from URL instead of using local repo |
+| `--git-user` | | Git username (or `$GIT_USER` env) |
+| `--git-token` | | Git token (or `$GIT_TOKEN`/`$GITHUB_TOKEN` env) |
 
 **Examples:**
 
@@ -115,6 +124,47 @@ templates:
       version: "15"
 ```
 
+### GitOps Integration
+
+Rendered manifests can be automatically committed and pushed to a git repository:
+
+```bash
+# Commit rendered files to local git repo
+claims render --non-interactive -t volumeclaim-simple -p name=my-volume \
+  -o ./manifests --git-commit
+
+# Commit with custom message
+claims render --non-interactive -t volumeclaim-simple -p name=my-volume \
+  -o ./manifests --git-commit --git-message "Add volume claim for app"
+
+# Create a new branch and commit
+claims render --non-interactive -t volumeclaim-simple -p name=my-volume \
+  -o ./manifests --git-commit --git-create-branch --git-branch feature/add-volume
+
+# Commit and push to remote
+claims render --non-interactive -t volumeclaim-simple -p name=my-volume \
+  -o ./manifests --git-push
+
+# Clone-based workflow (for CI/CD without local checkout)
+claims render --non-interactive -t volumeclaim-simple -p name=my-volume \
+  --git-repo-url https://github.com/org/gitops-repo.git \
+  -o manifests --git-push --git-create-branch --git-branch feature/new-claim
+```
+
+**Authentication:**
+
+Git credentials can be provided via flags or environment variables:
+
+```bash
+# Via flags
+claims render ... --git-push --git-user myuser --git-token ghp_xxx
+
+# Via environment variables
+export GIT_USER=myuser
+export GIT_TOKEN=ghp_xxx  # or GITHUB_TOKEN for GitHub Actions
+claims render ... --git-push
+```
+
 ## Interactive Workflow
 
 The `claims render` command follows an interactive workflow:
@@ -128,12 +178,20 @@ The `claims render` command follows an interactive workflow:
    - Edit a template's parameters (re-renders after editing)
    - Cancel the operation
 6. **Output** - Configure where and how to save files
+7. **Git Operations** - Optionally commit/push rendered files:
+   - None (just save locally)
+   - Commit to current branch
+   - Commit to new branch
+   - Commit and push to remote
 
 ## Configuration
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
 | `CLAIM_API_URL` | API base URL | `http://localhost:8080` |
+| `GIT_USER` | Git username for push operations | - |
+| `GIT_TOKEN` | Git token/password for push operations | - |
+| `GITHUB_TOKEN` | GitHub token (fallback for `GIT_TOKEN`) | - |
 
 ## Available Tasks
 
@@ -146,6 +204,7 @@ task --list
 | `task build` | Build the binary |
 | `task render` | Run render in non-interactive mode with params file |
 | `task render-inline` | Run render in non-interactive mode with inline params |
+| `task test-gitops` | Run GitOps integration tests |
 | `task release` | Release binary via goreleaser |
 
 **Testing non-interactive mode:**
@@ -176,16 +235,24 @@ task render-inline TEMPLATE=vspherevm PARAMS="name=test,cpu=4"
 │   ├── render_noninteractive.go # Non-interactive mode for CI/CD
 │   ├── render_review.go       # Review/preview step before saving
 │   ├── render_output.go       # File output logic (separate/single file, dry-run)
+│   ├── render_git.go          # Git operations integration
 │   ├── render_types.go        # Type definitions for render config/results
 │   ├── version.go             # Version command
 │   └── logo.go                # ASCII logo rendering
 ├── internal/
-│   └── templates/
-│       ├── types.go           # API data models
-│       ├── client.go          # HTTP client for claim-machinery API
-│       └── client_test.go     # Client unit tests
+│   ├── templates/
+│   │   ├── types.go           # API data models
+│   │   ├── client.go          # HTTP client for claim-machinery API
+│   │   └── client_test.go     # Client unit tests
+│   ├── gitops/
+│   │   ├── operations.go      # Git operations (clone, add, commit, push)
+│   │   ├── branch.go          # Branch management
+│   │   └── auth.go            # Credential resolution
+│   └── params/
+│       └── ...                # Parameter parsing
 ├── tests/
-│   └── params.yaml            # Example params file for testing
+│   ├── params.yaml            # Example params file for testing
+│   └── test_gitops.sh         # GitOps integration tests
 ├── go.mod                     # Go module definition
 ├── Taskfile.yaml              # Task automation
 ├── catalog-info.yaml          # Backstage component definition

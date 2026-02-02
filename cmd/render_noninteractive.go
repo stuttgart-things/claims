@@ -123,6 +123,13 @@ func runNonInteractive(config *RenderConfig) error {
 		return err
 	}
 
+	// Execute git operations if configured (and not dry-run)
+	if !config.DryRun {
+		if err := executeGitOperations(results, config); err != nil {
+			return fmt.Errorf("git operations: %w", err)
+		}
+	}
+
 	if hasErrors {
 		return fmt.Errorf("some templates failed to render")
 	}

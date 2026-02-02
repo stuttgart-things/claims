@@ -21,6 +21,17 @@ var (
 	inlineParams   []string
 	interactive    bool
 	nonInteractive bool
+
+	// Git flags
+	gitCommit       bool
+	gitPush         bool
+	gitBranch       string
+	gitCreateBranch bool
+	gitMessage      string
+	gitRemote       string
+	gitRepoURL      string
+	gitUser         string
+	gitToken        string
 )
 
 var renderCmd = &cobra.Command{
@@ -32,7 +43,7 @@ var renderCmd = &cobra.Command{
 
 func init() {
 	renderCmd.Flags().StringVarP(&apiURL, "api-url", "a", "", "API URL (default: $CLAIM_API_URL or http://localhost:8080)")
-	renderCmd.Flags().StringVarP(&outputDir, "output-dir", "o", "/tmp", "Output directory for rendered files")
+	renderCmd.Flags().StringVarP(&outputDir, "output-dir", "o", ".", "Output directory for rendered files")
 	renderCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print output without writing files")
 	renderCmd.Flags().BoolVar(&singleFile, "single-file", false, "Combine all resources into one file")
 	renderCmd.Flags().StringVar(&filenamePattern, "filename-pattern", "{{.template}}-{{.name}}.yaml", "Pattern for output filenames")
@@ -43,6 +54,17 @@ func init() {
 	renderCmd.Flags().StringSliceVarP(&inlineParams, "param", "p", nil, "Inline param (key=value, repeatable)")
 	renderCmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Force interactive mode")
 	renderCmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Force non-interactive mode")
+
+	// Git flags
+	renderCmd.Flags().BoolVar(&gitCommit, "git-commit", false, "Commit rendered files to git")
+	renderCmd.Flags().BoolVar(&gitPush, "git-push", false, "Push commits to remote (implies --git-commit)")
+	renderCmd.Flags().StringVar(&gitBranch, "git-branch", "", "Branch to use/create")
+	renderCmd.Flags().BoolVar(&gitCreateBranch, "git-create-branch", false, "Create the branch if it doesn't exist")
+	renderCmd.Flags().StringVar(&gitMessage, "git-message", "", "Commit message (default: auto-generated)")
+	renderCmd.Flags().StringVar(&gitRemote, "git-remote", "origin", "Git remote name")
+	renderCmd.Flags().StringVar(&gitRepoURL, "git-repo-url", "", "Clone from URL instead of using local repo")
+	renderCmd.Flags().StringVar(&gitUser, "git-user", "", "Git username (or GIT_USER env)")
+	renderCmd.Flags().StringVar(&gitToken, "git-token", "", "Git token (or GIT_TOKEN/GITHUB_TOKEN env)")
 
 	rootCmd.AddCommand(renderCmd)
 }
@@ -68,6 +90,21 @@ func runRender(cmd *cobra.Command, args []string) {
 		FilenamePattern: filenamePattern,
 		SingleFile:      singleFile,
 		DryRun:          dryRun,
+	}
+
+	// Build git config if any git flags are set
+	if gitCommit || gitPush || gitBranch != "" || gitRepoURL != "" {
+		config.GitConfig = &GitConfig{
+			Commit:       gitCommit || gitPush, // Push implies commit
+			Push:         gitPush,
+			CreateBranch: gitCreateBranch,
+			Message:      gitMessage,
+			Branch:       gitBranch,
+			Remote:       gitRemote,
+			RepoURL:      gitRepoURL,
+			User:         gitUser,
+			Token:        gitToken,
+		}
 	}
 
 	// Determine mode
