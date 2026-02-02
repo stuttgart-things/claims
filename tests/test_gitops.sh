@@ -169,7 +169,7 @@ cd "$PROJECT_DIR"
     --git-message "Add multiple resources"
 
 cd "$TEST_REPO"
-FILE_COUNT=$(ls -1 "$TEST_REPO/multi/" 2>/dev/null | wc -l)
+FILE_COUNT=$(find "$TEST_REPO/multi/" -maxdepth 1 -type f | wc -l)
 if [[ "$FILE_COUNT" -ge 2 ]]; then
     log_info "Multiple files created: $FILE_COUNT files"
     ls -la "$TEST_REPO/multi/"
