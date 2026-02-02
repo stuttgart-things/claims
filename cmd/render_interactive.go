@@ -15,11 +15,6 @@ const randomMarker = "🎲 Random"
 
 // Styles for terminal output
 var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("205")).
-			MarginBottom(1)
-
 	successStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("42"))
@@ -116,10 +111,60 @@ func runInteractiveRender(client *templates.Client) {
 	fmt.Println("\nRendering templates...")
 	results := renderAllTemplates(client, allParams)
 
-	// Display results
-	displayResults(results)
+	// Review loop - allows going back to edit parameters
+	for {
+		action, editIndex, err := ReviewResults(results)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
 
-	// Check for errors
+		switch action {
+		case ReviewActionContinue:
+			// Proceed to output configuration
+			// Break out of the review loop
+
+		case ReviewActionEdit:
+			// Re-collect params for selected template
+			tmpl := templateMap[results[editIndex].TemplateName]
+
+			fmt.Printf("\n%s\n", progressStyle.Render(
+				fmt.Sprintf("━━━ Editing: %s ━━━", tmpl.Metadata.Title),
+			))
+			fmt.Printf("%s\n\n", tmpl.Metadata.Description)
+
+			newParams, err := collectTemplateParams(tmpl)
+			if err != nil {
+				fmt.Printf("Error collecting parameters: %v\n", err)
+				continue // Stay in review loop
+			}
+
+			// Re-render the template
+			fmt.Printf("Re-rendering %s... ", tmpl.Metadata.Name)
+			content, err := client.RenderTemplate(tmpl.Metadata.Name, newParams)
+			if err != nil {
+				fmt.Println(errorStyle.Render("failed"))
+				results[editIndex].Error = err
+			} else {
+				fmt.Println(successStyle.Render("done"))
+				results[editIndex].Content = content
+				results[editIndex].Params = newParams
+				results[editIndex].Error = nil
+				if name, ok := newParams["name"]; ok {
+					results[editIndex].ResourceName = fmt.Sprintf("%v", name)
+				}
+			}
+			continue // Loop back to review
+
+		case ReviewActionCancel:
+			fmt.Println("Cancelled.")
+			return
+		}
+
+		break // Exit review loop on continue
+	}
+
+	// Check for any successful renders
 	successCount := 0
 	for _, r := range results {
 		if r.Error == nil {
@@ -128,11 +173,11 @@ func runInteractiveRender(client *templates.Client) {
 	}
 
 	if successCount == 0 {
-		fmt.Println(errorStyle.Render("\nAll renders failed!"))
+		fmt.Println(errorStyle.Render("\nNo successful renders to save!"))
 		os.Exit(1)
 	}
 
-	fmt.Println(successStyle.Render(fmt.Sprintf("\n%d/%d rendered successfully!", successCount, len(results))))
+	fmt.Println(successStyle.Render(fmt.Sprintf("\n%d/%d ready to save", successCount, len(results))))
 
 	// Build output config from flags or run interactive form
 	var outputConfig OutputConfig
@@ -326,20 +371,6 @@ func renderAllTemplates(client *templates.Client, allParams []TemplateParams) []
 	}
 
 	return results
-}
-
-// displayResults shows the rendered YAML content
-func displayResults(results []RenderResult) {
-	fmt.Println("\n" + progressStyle.Render("━━━ Rendered Output ━━━"))
-
-	for _, r := range results {
-		if r.Error != nil {
-			fmt.Printf("\n%s: %s\n", r.TemplateName, errorStyle.Render(r.Error.Error()))
-			continue
-		}
-		fmt.Printf("\n%s (%s):\n", titleStyle.Render(r.TemplateName), r.ResourceName)
-		fmt.Println(yamlStyle.Render(r.Content))
-	}
 }
 
 // runOutputForm runs the interactive output configuration form
