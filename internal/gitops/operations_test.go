@@ -179,6 +179,7 @@ func TestPush(t *testing.T) {
 		user    string
 		token   string
 		remote  string
+		branch  string
 		wantErr bool
 	}{
 		{
@@ -186,6 +187,7 @@ func TestPush(t *testing.T) {
 			user:    "",
 			token:   "",
 			remote:  "origin",
+			branch:  "main",
 			wantErr: true,
 		},
 		{
@@ -193,6 +195,7 @@ func TestPush(t *testing.T) {
 			user:    "testuser",
 			token:   "testtoken",
 			remote:  "nonexistent",
+			branch:  "main",
 			wantErr: true,
 		},
 	}
@@ -204,7 +207,7 @@ func TestPush(t *testing.T) {
 				t.Fatalf("failed to create GitOps: %v", err)
 			}
 
-			err = g.Push(tt.remote)
+			err = g.Push(tt.remote, tt.branch)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Push() error = %v, wantErr %v", err, tt.wantErr)
 			}

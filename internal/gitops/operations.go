@@ -7,6 +7,7 @@ import (
 	"time"
 
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 )
@@ -145,14 +146,18 @@ func (g *GitOps) Commit(message, authorName, authorEmail string) error {
 	return nil
 }
 
-// Push pushes to remote
-func (g *GitOps) Push(remote string) error {
+// Push pushes a specific branch to remote
+func (g *GitOps) Push(remote, branch string) error {
 	if g.auth == nil {
 		return fmt.Errorf("git credentials required for push")
 	}
 
+	// Only push the specified branch, not all branches
+	refSpec := config.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", branch, branch))
+
 	err := g.repo.Push(&git.PushOptions{
 		RemoteName: remote,
+		RefSpecs:   []config.RefSpec{refSpec},
 		Auth:       g.auth,
 	})
 	if err != nil && err != git.NoErrAlreadyUpToDate {
