@@ -61,6 +61,11 @@ claims render [flags]
 | `--git-repo-url` | | Clone from URL instead of using local repo |
 | `--git-user` | | Git username (or `$GIT_USER` env) |
 | `--git-token` | | Git token (or `$GIT_TOKEN`/`$GITHUB_TOKEN` env) |
+| `--create-pr` | | Create a pull request after push |
+| `--pr-title` | | PR title (default: auto-generated) |
+| `--pr-description` | | PR description |
+| `--pr-labels` | | PR labels (comma-separated) |
+| `--pr-base` | | Base branch for PR (default: `main`) |
 
 **Examples:**
 
@@ -165,6 +170,42 @@ export GIT_TOKEN=ghp_xxx  # or GITHUB_TOKEN for GitHub Actions
 claims render ... --git-push
 ```
 
+### Pull Request Support
+
+Automatically create pull requests after pushing changes:
+
+```bash
+# Create PR with auto-generated title/description
+claims render --non-interactive -t volumeclaim-simple -p name=my-volume \
+  -o ./manifests --create-pr --git-create-branch --git-branch feature/add-volume
+
+# Create PR with custom title and labels
+claims render --non-interactive -t volumeclaim-simple -p name=my-volume \
+  -o ./manifests --create-pr --git-create-branch --git-branch feature/add-volume \
+  --pr-title "Add volume claim for application" \
+  --pr-labels "infrastructure,automated"
+
+# Create PR with custom description
+claims render --non-interactive -f params.yaml \
+  -o ./manifests --create-pr --git-create-branch --git-branch feature/infra-update \
+  --pr-title "Infrastructure update" \
+  --pr-description "Adding new infrastructure resources" \
+  --pr-base main
+```
+
+**Requirements:**
+
+PR creation requires the GitHub CLI (`gh`) to be installed and authenticated:
+
+```bash
+# Install gh CLI
+# macOS: brew install gh
+# Linux: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+
+# Authenticate
+gh auth login
+```
+
 ## Interactive Workflow
 
 The `claims render` command follows an interactive workflow:
@@ -183,6 +224,7 @@ The `claims render` command follows an interactive workflow:
    - Commit to current branch
    - Commit to new branch
    - Commit and push to remote
+   - Commit, push & create PR (with PR details form)
 
 ## Configuration
 
@@ -236,6 +278,7 @@ task render-inline TEMPLATE=vspherevm PARAMS="name=test,cpu=4"
 │   ├── render_review.go       # Review/preview step before saving
 │   ├── render_output.go       # File output logic (separate/single file, dry-run)
 │   ├── render_git.go          # Git operations integration
+│   ├── render_pr.go           # Pull request creation integration
 │   ├── render_types.go        # Type definitions for render config/results
 │   ├── version.go             # Version command
 │   └── logo.go                # ASCII logo rendering
@@ -247,7 +290,8 @@ task render-inline TEMPLATE=vspherevm PARAMS="name=test,cpu=4"
 │   ├── gitops/
 │   │   ├── operations.go      # Git operations (clone, add, commit, push)
 │   │   ├── branch.go          # Branch management
-│   │   └── auth.go            # Credential resolution
+│   │   ├── auth.go            # Credential resolution
+│   │   └── pr.go              # Pull request creation via gh CLI
 │   └── params/
 │       └── ...                # Parameter parsing
 ├── tests/

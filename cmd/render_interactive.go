@@ -207,13 +207,13 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 		// Loop to allow going back from git validation to destination choice
 		for {
 			// First ask: git or save locally?
-			useGit, err := runDestinationChoice()
+			destChoice, err := runDestinationChoice()
 			if err != nil {
 				return fmt.Errorf("destination choice: %w", err)
 			}
 
 			// Run interactive output form with git validation if needed
-			formConfig, goBack, err := runOutputFormWithValidation(useGit, successCount, exampleTemplate, exampleName)
+			formConfig, goBack, err := runOutputFormWithValidation(destChoice.useGit, successCount, exampleTemplate, exampleName)
 			if err != nil {
 				return fmt.Errorf("output configuration: %w", err)
 			}
@@ -228,12 +228,21 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			outputConfig = *formConfig
 
 			// If git was chosen, collect git options now
-			if useGit {
-				gitConfig, err := runGitDetailsForm()
+			if destChoice.useGit {
+				gitConfig, err := runGitDetailsForm(destChoice.createPR)
 				if err != nil {
 					return fmt.Errorf("git options: %w", err)
 				}
 				config.GitConfig = gitConfig
+
+				// If PR was chosen, collect PR options
+				if destChoice.createPR {
+					prConfig, err := runPROptionsForm()
+					if err != nil {
+						return fmt.Errorf("PR options: %w", err)
+					}
+					config.PRConfig = prConfig
+				}
 			}
 			break
 		}
@@ -257,8 +266,14 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 	return nil
 }
 
-// runDestinationChoice asks the user whether to save locally or commit to git
-func runDestinationChoice() (bool, error) {
+// destinationChoice represents the user's choice for where to save files
+type destinationChoice struct {
+	useGit   bool
+	createPR bool
+}
+
+// runDestinationChoice asks the user whether to save locally, commit to git, or create a PR
+func runDestinationChoice() (destinationChoice, error) {
 	var destination string
 
 	form := huh.NewForm(
@@ -269,16 +284,20 @@ func runDestinationChoice() (bool, error) {
 				Options(
 					huh.NewOption("Save locally only", "local"),
 					huh.NewOption("Commit to git repository", "git"),
+					huh.NewOption("Commit, push & create PR", "pr"),
 				).
 				Value(&destination),
 		),
 	)
 
 	if err := form.Run(); err != nil {
-		return false, err
+		return destinationChoice{}, err
 	}
 
-	return destination == "git", nil
+	return destinationChoice{
+		useGit:   destination == "git" || destination == "pr",
+		createPR: destination == "pr",
+	}, nil
 }
 
 // getSubfolders returns a list of subdirectories in the given path
@@ -623,45 +642,27 @@ func runOutputFormWithValidation(requireGitRepo bool, resultCount int, exampleTe
 }
 
 // runGitDetailsForm prompts for git commit details (branch, message, push)
-func runGitDetailsForm() (*GitConfig, error) {
-	var gitAction string
-
-	actionForm := huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Git commit options").
-				Description("How should the files be committed?").
-				Options(
-					huh.NewOption("Commit to current branch", "commit"),
-					huh.NewOption("Commit to new branch", "branch"),
-					huh.NewOption("Commit and push", "push"),
-				).
-				Value(&gitAction),
-		),
-	)
-
-	if err := actionForm.Run(); err != nil {
-		return nil, err
-	}
-
+// If createPR is true, push is implied and user won't be asked about it
+func runGitDetailsForm(createPR bool) (*GitConfig, error) {
 	gitConfig := &GitConfig{
 		Commit: true,
+		Push:   createPR, // PR implies push
 		Remote: "origin",
 	}
 
-	// If creating new branch, ask for branch name
-	if gitAction == "branch" {
+	// If creating a PR, we need a new branch (can't PR from main to main)
+	if createPR {
 		var branchName string
 		branchForm := huh.NewForm(
 			huh.NewGroup(
 				huh.NewInput().
 					Title("Branch name").
-					Description("Name for the new branch").
+					Description("New branch for the PR (required for PR creation)").
 					Placeholder("feature/my-changes").
 					Value(&branchName).
 					Validate(func(s string) error {
 						if s == "" {
-							return fmt.Errorf("branch name required")
+							return fmt.Errorf("branch name required for PR")
 						}
 						return nil
 					}),
@@ -674,11 +675,59 @@ func runGitDetailsForm() (*GitConfig, error) {
 
 		gitConfig.CreateBranch = true
 		gitConfig.Branch = branchName
-	}
+	} else {
+		// Not creating PR - ask about git action
+		var gitAction string
 
-	// If pushing, set push flag
-	if gitAction == "push" {
-		gitConfig.Push = true
+		actionForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewSelect[string]().
+					Title("Git commit options").
+					Description("How should the files be committed?").
+					Options(
+						huh.NewOption("Commit to current branch", "commit"),
+						huh.NewOption("Commit to new branch", "branch"),
+						huh.NewOption("Commit and push", "push"),
+					).
+					Value(&gitAction),
+			),
+		)
+
+		if err := actionForm.Run(); err != nil {
+			return nil, err
+		}
+
+		// If creating new branch, ask for branch name
+		if gitAction == "branch" {
+			var branchName string
+			branchForm := huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().
+						Title("Branch name").
+						Description("Name for the new branch").
+						Placeholder("feature/my-changes").
+						Value(&branchName).
+						Validate(func(s string) error {
+							if s == "" {
+								return fmt.Errorf("branch name required")
+							}
+							return nil
+						}),
+				),
+			)
+
+			if err := branchForm.Run(); err != nil {
+				return nil, err
+			}
+
+			gitConfig.CreateBranch = true
+			gitConfig.Branch = branchName
+		}
+
+		// If pushing, set push flag
+		if gitAction == "push" {
+			gitConfig.Push = true
+		}
 	}
 
 	// Ask for commit message
@@ -700,6 +749,66 @@ func runGitDetailsForm() (*GitConfig, error) {
 	gitConfig.Message = commitMessage
 
 	return gitConfig, nil
+}
+
+// runPROptionsForm prompts for PR details (title, description, labels, base branch)
+func runPROptionsForm() (*PRConfig, error) {
+	var (
+		prTitle       string
+		prDescription string
+		prLabels      string
+		prBase        string = "main"
+	)
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("PR Title").
+				Description("Leave empty for auto-generated title").
+				Placeholder("Add rendered claims").
+				Value(&prTitle),
+
+			huh.NewText().
+				Title("PR Description").
+				Description("Leave empty for auto-generated description").
+				Value(&prDescription).
+				CharLimit(1000),
+
+			huh.NewInput().
+				Title("Labels").
+				Description("Comma-separated labels (e.g., infrastructure,automated)").
+				Placeholder("infrastructure,automated").
+				Value(&prLabels),
+
+			huh.NewInput().
+				Title("Base branch").
+				Description("Target branch for the PR").
+				Value(&prBase),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		return nil, err
+	}
+
+	// Parse labels
+	var labels []string
+	if prLabels != "" {
+		for _, l := range strings.Split(prLabels, ",") {
+			trimmed := strings.TrimSpace(l)
+			if trimmed != "" {
+				labels = append(labels, trimmed)
+			}
+		}
+	}
+
+	return &PRConfig{
+		Create:      true,
+		Title:       prTitle,
+		Description: prDescription,
+		Labels:      labels,
+		BaseBranch:  prBase,
+	}, nil
 }
 
 // selectTemplates displays a multi-select form for template selection

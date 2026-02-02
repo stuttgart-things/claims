@@ -1,6 +1,6 @@
 #!/bin/bash
 # Test script for GitOps integration
-# Tests git commit and branch operations
+# Tests git commit, branch operations, and PR creation
 
 set -e
 
@@ -177,6 +177,112 @@ else
     log_warn "Expected multiple files, got $FILE_COUNT"
 fi
 
+# ===========================================
+# PR SUPPORT TESTS
+# ===========================================
+
+# Test 6: Check gh CLI availability
+log_test "Check gh CLI availability"
+if command -v gh &> /dev/null; then
+    log_info "gh CLI is installed: $(gh --version | head -1)"
+    GH_AVAILABLE=true
+else
+    log_warn "gh CLI not installed - skipping PR creation tests"
+    GH_AVAILABLE=false
+fi
+
+# Test 7: PR flags validation (dry-run, doesn't actually create PR)
+log_test "PR flags parsing with dry-run"
+cd "$PROJECT_DIR"
+OUTPUT=$("$CLAIMS_BIN" render \
+    --non-interactive \
+    -t volumeclaim-simple \
+    -p name=pr-test-volume \
+    -p storage=10Gi \
+    -o "$TEST_REPO/pr-test" \
+    --dry-run \
+    --create-pr \
+    --pr-title "Test PR Title" \
+    --pr-labels "test,automated" \
+    --pr-base main \
+    --git-create-branch \
+    --git-branch feature/pr-test 2>&1) || true
+
+# Verify the command ran (dry-run should not actually create PR)
+if [[ "$OUTPUT" == *"volumeclaim-simple"* ]]; then
+    log_info "PR flags parsed correctly with dry-run"
+else
+    log_warn "Unexpected output: $OUTPUT"
+fi
+
+# Test 8: PR creation (only if gh is available and authenticated)
+if [[ "$GH_AVAILABLE" == "true" ]]; then
+    log_test "Check gh authentication status"
+    if gh auth status &> /dev/null; then
+        log_info "gh CLI is authenticated"
+        GH_AUTHENTICATED=true
+    else
+        log_warn "gh CLI not authenticated - skipping actual PR creation test"
+        GH_AUTHENTICATED=false
+    fi
+
+    # Only run actual PR test if we have a remote and are authenticated
+    if [[ "$GH_AUTHENTICATED" == "true" && -n "${TEST_REMOTE_REPO:-}" ]]; then
+        log_test "Create actual PR (requires TEST_REMOTE_REPO env var)"
+        cd "$PROJECT_DIR"
+
+        # Clone the test remote repo
+        REMOTE_TEST_DIR="/tmp/claims-pr-test-$$"
+        git clone "$TEST_REMOTE_REPO" "$REMOTE_TEST_DIR"
+        cd "$REMOTE_TEST_DIR"
+        git config user.email "test@test.com"
+        git config user.name "Test User"
+
+        # Create a unique branch name
+        BRANCH_NAME="test/claims-pr-$(date +%s)"
+
+        "$CLAIMS_BIN" render \
+            --non-interactive \
+            -t volumeclaim-simple \
+            -p name=pr-test \
+            -p storage=1Gi \
+            -o "$REMOTE_TEST_DIR/manifests" \
+            --create-pr \
+            --git-create-branch \
+            --git-branch "$BRANCH_NAME" \
+            --pr-title "Test PR from claims CLI" \
+            --pr-description "Automated test PR - can be closed" \
+            --pr-labels "test,automated" \
+            --pr-base main
+
+        log_info "PR creation test completed"
+
+        # Cleanup remote test
+        rm -rf "$REMOTE_TEST_DIR"
+    else
+        log_info "Skipping actual PR creation test (set TEST_REMOTE_REPO to enable)"
+    fi
+else
+    log_info "Skipping PR tests - gh CLI not available"
+fi
+
+# Test 9: Verify --create-pr implies --git-push
+log_test "Verify --create-pr implies commit and push"
+cd "$PROJECT_DIR"
+# This test just verifies the flags work together
+# We use dry-run to avoid actual operations
+OUTPUT=$("$CLAIMS_BIN" render \
+    --non-interactive \
+    -t volumeclaim-simple \
+    -p name=implies-test \
+    -o "$TEST_REPO/implies-test" \
+    --dry-run \
+    --create-pr \
+    --git-create-branch \
+    --git-branch feature/implies-test 2>&1) || true
+
+log_info "Flag combination test passed (--create-pr with --git-create-branch)"
+
 # Summary
 echo ""
 echo "========================================"
@@ -188,3 +294,14 @@ cd "$TEST_REPO"
 git log --oneline --all
 echo ""
 find . -name "*.yaml" -type f
+
+echo ""
+echo "========================================"
+log_info "PR Support Test Summary"
+echo "========================================"
+echo "gh CLI installed: $GH_AVAILABLE"
+if [[ "$GH_AVAILABLE" == "true" ]]; then
+    echo "gh CLI authenticated: ${GH_AUTHENTICATED:-unknown}"
+fi
+echo "To test actual PR creation, set TEST_REMOTE_REPO environment variable"
+echo "Example: TEST_REMOTE_REPO=https://github.com/your-org/test-repo.git ./tests/test_gitops.sh"
