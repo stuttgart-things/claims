@@ -81,6 +81,20 @@ claims render -t vsphere-vm -t postgres-db
 claims render -t vsphere-vm,postgres-db -o ./out
 ```
 
+## Interactive Workflow
+
+The `claims render` command follows an interactive workflow:
+
+1. **API URL** - Confirm or change the API endpoint
+2. **Template Selection** - Multi-select templates to render (space to select, enter to confirm)
+3. **Parameter Input** - Fill in parameters for each selected template
+4. **Render** - Call the API to generate YAML
+5. **Review** - Preview rendered resources with options to:
+   - Continue to save
+   - Edit a template's parameters (re-renders after editing)
+   - Cancel the operation
+6. **Output** - Configure where and how to save files
+
 ## Configuration
 
 | Environment Variable | Description | Default |
@@ -113,6 +127,7 @@ task --list
 │   ├── root.go                # Root command setup
 │   ├── render.go              # Render command and flags
 │   ├── render_interactive.go  # Interactive form-based rendering
+│   ├── render_review.go       # Review/preview step before saving
 │   ├── render_output.go       # File output logic (separate/single file, dry-run)
 │   ├── render_types.go        # Type definitions for render config/results
 │   ├── version.go             # Version command
