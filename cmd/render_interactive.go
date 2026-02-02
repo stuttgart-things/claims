@@ -3,7 +3,11 @@ package cmd
 import (
 	"fmt"
 	"math/rand"
+	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
@@ -181,7 +185,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 	var outputConfig OutputConfig
 
 	// Check if output flags were explicitly set (non-default values or dry-run)
-	if config.DryRun || config.OutputDir != "/tmp" || config.SingleFile || config.FilenamePattern != "{{.template}}-{{.name}}.yaml" {
+	if config.DryRun || config.OutputDir != "." || config.SingleFile || config.FilenamePattern != "{{.template}}-{{.name}}.yaml" {
 		// Use flag values
 		outputConfig = OutputConfig{
 			Directory:       config.OutputDir,
@@ -190,16 +194,49 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			DryRun:          config.DryRun,
 		}
 	} else {
-		// Run interactive output form
-		formConfig, err := runOutputForm()
-		if err != nil {
-			return fmt.Errorf("output configuration: %w", err)
+		// Get example template and name for filename preview
+		var exampleTemplate, exampleName string
+		for _, r := range results {
+			if r.Error == nil {
+				exampleTemplate = r.TemplateName
+				exampleName = r.ResourceName
+				break
+			}
 		}
-		if formConfig == nil {
-			fmt.Println("Save cancelled.")
-			return nil
+
+		// Loop to allow going back from git validation to destination choice
+		for {
+			// First ask: git or save locally?
+			useGit, err := runDestinationChoice()
+			if err != nil {
+				return fmt.Errorf("destination choice: %w", err)
+			}
+
+			// Run interactive output form with git validation if needed
+			formConfig, goBack, err := runOutputFormWithValidation(useGit, successCount, exampleTemplate, exampleName)
+			if err != nil {
+				return fmt.Errorf("output configuration: %w", err)
+			}
+			if goBack {
+				// User wants to go back and change destination choice
+				continue
+			}
+			if formConfig == nil {
+				fmt.Println("Save cancelled.")
+				return nil
+			}
+			outputConfig = *formConfig
+
+			// If git was chosen, collect git options now
+			if useGit {
+				gitConfig, err := runGitDetailsForm()
+				if err != nil {
+					return fmt.Errorf("git options: %w", err)
+				}
+				config.GitConfig = gitConfig
+			}
+			break
 		}
-		outputConfig = *formConfig
 	}
 
 	// Write results using the output configuration
@@ -207,7 +244,462 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 		return fmt.Errorf("writing output: %w", err)
 	}
 
+	// Execute git operations if configured (and not dry-run)
+	if !outputConfig.DryRun && config.GitConfig != nil {
+		// Update config with the actual output directory used
+		config.OutputDir = outputConfig.Directory
+
+		if err := executeGitOperations(results, config); err != nil {
+			return fmt.Errorf("git operations: %w", err)
+		}
+	}
+
 	return nil
+}
+
+// runDestinationChoice asks the user whether to save locally or commit to git
+func runDestinationChoice() (bool, error) {
+	var destination string
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Where to save?").
+				Description("Choose how to save the rendered files").
+				Options(
+					huh.NewOption("Save locally only", "local"),
+					huh.NewOption("Commit to git repository", "git"),
+				).
+				Value(&destination),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		return false, err
+	}
+
+	return destination == "git", nil
+}
+
+// getSubfolders returns a list of subdirectories in the given path
+func getSubfolders(basePath string) ([]string, error) {
+	entries, err := os.ReadDir(basePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var folders []string
+	for _, entry := range entries {
+		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+			folders = append(folders, entry.Name())
+		}
+	}
+	sort.Strings(folders)
+	return folders, nil
+}
+
+// selectDirectory runs an interactive directory picker
+// Returns the selected directory path
+func selectDirectory(startPath string) (string, error) {
+	currentPath := startPath
+	if currentPath == "" {
+		currentPath = "."
+	}
+
+	// Resolve to absolute path for display
+	absPath, err := filepath.Abs(currentPath)
+	if err != nil {
+		absPath = currentPath
+	}
+
+	for {
+		subfolders, err := getSubfolders(currentPath)
+		if err != nil {
+			// If we can't read the directory, fall back to manual input
+			return manualDirectoryInput(currentPath)
+		}
+
+		// Build options
+		var options []huh.Option[string]
+
+		// Option to use current directory
+		displayPath := currentPath
+		if currentPath == "." {
+			displayPath = ". (current directory)"
+		}
+		options = append(options, huh.NewOption(fmt.Sprintf("✓ Use this directory: %s", displayPath), "__use_current__"))
+
+		// Option to go to parent directory (if not at root)
+		if currentPath != "/" && currentPath != "." {
+			options = append(options, huh.NewOption("⬆ Parent directory", "__parent__"))
+		} else if currentPath == "." {
+			options = append(options, huh.NewOption("⬆ Parent directory", "__parent__"))
+		}
+
+		// List subfolders
+		for _, folder := range subfolders {
+			options = append(options, huh.NewOption(fmt.Sprintf("📁 %s", folder), folder))
+		}
+
+		// Option to create new folder
+		options = append(options, huh.NewOption("➕ Create new folder...", "__create__"))
+
+		// Option to enter path manually
+		options = append(options, huh.NewOption("✏️  Enter path manually...", "__manual__"))
+
+		var choice string
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewSelect[string]().
+					Title("Select output directory").
+					Description(fmt.Sprintf("Current: %s", absPath)).
+					Options(options...).
+					Value(&choice),
+			),
+		)
+
+		if err := form.Run(); err != nil {
+			return "", err
+		}
+
+		switch choice {
+		case "__use_current__":
+			return currentPath, nil
+
+		case "__parent__":
+			if currentPath == "." {
+				currentPath = ".."
+			} else {
+				currentPath = filepath.Dir(currentPath)
+			}
+			absPath, _ = filepath.Abs(currentPath)
+
+		case "__create__":
+			newFolder, created, err := createNewFolder(currentPath)
+			if err != nil {
+				return "", err
+			}
+			if created {
+				return newFolder, nil
+			}
+			// User cancelled, continue loop
+
+		case "__manual__":
+			return manualDirectoryInput(currentPath)
+
+		default:
+			// User selected a subfolder
+			currentPath = filepath.Join(currentPath, choice)
+			absPath, _ = filepath.Abs(currentPath)
+		}
+	}
+}
+
+// createNewFolder prompts for a folder name and creates it
+// Returns the full path, whether it was created, and any error
+func createNewFolder(basePath string) (string, bool, error) {
+	var folderName string
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("New folder name").
+				Description(fmt.Sprintf("Will be created in: %s", basePath)).
+				Value(&folderName).
+				Validate(func(s string) error {
+					if s == "" {
+						return fmt.Errorf("folder name cannot be empty")
+					}
+					if strings.ContainsAny(s, "/\\:*?\"<>|") {
+						return fmt.Errorf("folder name contains invalid characters")
+					}
+					return nil
+				}),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		return "", false, err
+	}
+
+	if folderName == "" {
+		return "", false, nil
+	}
+
+	newPath := filepath.Join(basePath, folderName)
+
+	// Check if folder already exists
+	if _, err := os.Stat(newPath); err == nil {
+		fmt.Println(errorStyle.Render(fmt.Sprintf("Folder '%s' already exists", folderName)))
+		var useExisting bool
+		confirmForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Use existing folder?").
+					Value(&useExisting),
+			),
+		)
+		if err := confirmForm.Run(); err != nil {
+			return "", false, err
+		}
+		if useExisting {
+			return newPath, true, nil
+		}
+		return "", false, nil
+	}
+
+	// Create the folder
+	if err := os.MkdirAll(newPath, 0755); err != nil {
+		fmt.Println(errorStyle.Render(fmt.Sprintf("Failed to create folder: %v", err)))
+		return "", false, nil
+	}
+
+	fmt.Println(successStyle.Render(fmt.Sprintf("Created folder: %s", newPath)))
+	return newPath, true, nil
+}
+
+// manualDirectoryInput allows the user to type a directory path manually
+func manualDirectoryInput(defaultPath string) (string, error) {
+	var outputDir string = defaultPath
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Output directory").
+				Description("Enter the path manually").
+				Value(&outputDir),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		return "", err
+	}
+
+	// Check if directory exists, offer to create if not
+	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
+		var createDir bool
+		confirmForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title(fmt.Sprintf("Directory '%s' doesn't exist. Create it?", outputDir)).
+					Value(&createDir),
+			),
+		)
+		if err := confirmForm.Run(); err != nil {
+			return "", err
+		}
+		if createDir {
+			if err := os.MkdirAll(outputDir, 0755); err != nil {
+				return "", fmt.Errorf("failed to create directory: %w", err)
+			}
+			fmt.Println(successStyle.Render(fmt.Sprintf("Created directory: %s", outputDir)))
+		}
+	}
+
+	return outputDir, nil
+}
+
+// runOutputFormWithValidation runs the output form and validates git repo if needed
+// Returns OutputConfig, shouldGoBack (to change destination), and error
+func runOutputFormWithValidation(requireGitRepo bool, resultCount int, exampleTemplate, exampleName string) (*OutputConfig, bool, error) {
+	var (
+		outputDirectory = "."
+		outputMode      = "separate"
+		pattern         = "{{.template}}-{{.name}}.yaml"
+	)
+
+	// Ask for output directory with validation using the directory picker
+	for {
+		selectedDir, err := selectDirectory(".")
+		if err != nil {
+			return nil, false, err
+		}
+		outputDirectory = selectedDir
+
+		// Validate git repo if required
+		if requireGitRepo {
+			_, err := findRepoRoot(outputDirectory)
+			if err != nil {
+				fmt.Println(errorStyle.Render("Error: Output directory is not in a git repository"))
+				fmt.Println()
+
+				var retryChoice string
+				retryForm := huh.NewForm(
+					huh.NewGroup(
+						huh.NewSelect[string]().
+							Title("What would you like to do?").
+							Options(
+								huh.NewOption("Choose a different directory", "retry"),
+								huh.NewOption("Go back and save locally instead", "goback"),
+								huh.NewOption("Cancel", "cancel"),
+							).
+							Value(&retryChoice),
+					),
+				)
+				if err := retryForm.Run(); err != nil {
+					return nil, false, err
+				}
+
+				switch retryChoice {
+				case "retry":
+					continue
+				case "goback":
+					return nil, true, nil
+				default: // cancel
+					return nil, false, nil
+				}
+			}
+		}
+		break
+	}
+
+	// Only ask for output mode if rendering multiple files
+	if resultCount > 1 {
+		modeForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewSelect[string]().
+					Title("Output mode").
+					Description("How should resources be organized?").
+					Options(
+						huh.NewOption("Separate files (one per resource)", "separate"),
+						huh.NewOption("Single file (combined with ---)", "single"),
+					).
+					Value(&outputMode),
+			),
+		)
+
+		if err := modeForm.Run(); err != nil {
+			return nil, false, err
+		}
+	}
+
+	// For separate files, ask for filename pattern
+	if outputMode == "separate" {
+		// Build example filename for preview
+		exampleDefault := fmt.Sprintf("%s-%s.yaml", exampleTemplate, exampleName)
+		exampleNameOnly := fmt.Sprintf("%s.yaml", exampleName)
+
+		patternForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewSelect[string]().
+					Title("Filename pattern").
+					Description("Pattern for output filenames").
+					Options(
+						huh.NewOption(fmt.Sprintf("%s (default)", exampleDefault), "{{.template}}-{{.name}}.yaml"),
+						huh.NewOption(exampleNameOnly, "{{.name}}.yaml"),
+						huh.NewOption("Custom", "custom"),
+					).
+					Value(&pattern),
+			),
+		)
+
+		if err := patternForm.Run(); err != nil {
+			return nil, false, err
+		}
+
+		if pattern == "custom" {
+			customForm := huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().
+						Title("Custom filename pattern").
+						Description("Use {{.template}} and {{.name}} as placeholders").
+						Placeholder("{{.template}}-{{.name}}.yaml").
+						Value(&pattern),
+				),
+			)
+
+			if err := customForm.Run(); err != nil {
+				return nil, false, err
+			}
+		}
+	}
+
+	return &OutputConfig{
+		Directory:       outputDirectory,
+		FilenamePattern: pattern,
+		SingleFile:      outputMode == "single",
+		DryRun:          false,
+	}, false, nil
+}
+
+// runGitDetailsForm prompts for git commit details (branch, message, push)
+func runGitDetailsForm() (*GitConfig, error) {
+	var gitAction string
+
+	actionForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Git commit options").
+				Description("How should the files be committed?").
+				Options(
+					huh.NewOption("Commit to current branch", "commit"),
+					huh.NewOption("Commit to new branch", "branch"),
+					huh.NewOption("Commit and push", "push"),
+				).
+				Value(&gitAction),
+		),
+	)
+
+	if err := actionForm.Run(); err != nil {
+		return nil, err
+	}
+
+	gitConfig := &GitConfig{
+		Commit: true,
+		Remote: "origin",
+	}
+
+	// If creating new branch, ask for branch name
+	if gitAction == "branch" {
+		var branchName string
+		branchForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Branch name").
+					Description("Name for the new branch").
+					Placeholder("feature/my-changes").
+					Value(&branchName).
+					Validate(func(s string) error {
+						if s == "" {
+							return fmt.Errorf("branch name required")
+						}
+						return nil
+					}),
+			),
+		)
+
+		if err := branchForm.Run(); err != nil {
+			return nil, err
+		}
+
+		gitConfig.CreateBranch = true
+		gitConfig.Branch = branchName
+	}
+
+	// If pushing, set push flag
+	if gitAction == "push" {
+		gitConfig.Push = true
+	}
+
+	// Ask for commit message
+	var commitMessage string
+	msgForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Commit message").
+				Description("Leave empty for auto-generated message").
+				Placeholder("Add rendered claims").
+				Value(&commitMessage),
+		),
+	)
+
+	if err := msgForm.Run(); err != nil {
+		return nil, err
+	}
+
+	gitConfig.Message = commitMessage
+
+	return gitConfig, nil
 }
 
 // selectTemplates displays a multi-select form for template selection
@@ -369,104 +861,6 @@ func renderAllTemplates(client *templates.Client, allParams []TemplateParams) []
 	}
 
 	return results
-}
-
-// runOutputForm runs the interactive output configuration form
-func runOutputForm() (*OutputConfig, error) {
-	var (
-		saveFile        bool   = true
-		outputMode      string = "separate"
-		outputDirectory string = "/tmp"
-		pattern         string = "{{.template}}-{{.name}}.yaml"
-	)
-
-	// First, ask if user wants to save
-	saveForm := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Save to file?").
-				Description("Save the rendered output to a file").
-				Affirmative("Yes").
-				Negative("No").
-				Value(&saveFile),
-		),
-	)
-
-	if err := saveForm.Run(); err != nil {
-		return nil, err
-	}
-
-	if !saveFile {
-		return nil, nil
-	}
-
-	// Ask for output configuration
-	configForm := huh.NewForm(
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Output directory").
-				Description("Where to save rendered files").
-				Value(&outputDirectory),
-
-			huh.NewSelect[string]().
-				Title("Output mode").
-				Description("How should resources be organized?").
-				Options(
-					huh.NewOption("Separate files (one per resource)", "separate"),
-					huh.NewOption("Single file (combined with ---)", "single"),
-				).
-				Value(&outputMode),
-		),
-	)
-
-	if err := configForm.Run(); err != nil {
-		return nil, err
-	}
-
-	// For separate files, ask for filename pattern
-	if outputMode == "separate" {
-		patternForm := huh.NewForm(
-			huh.NewGroup(
-				huh.NewSelect[string]().
-					Title("Filename pattern").
-					Description("Pattern for output filenames").
-					Options(
-						huh.NewOption("{{template}}-{{name}}.yaml (default)", "{{.template}}-{{.name}}.yaml"),
-						huh.NewOption("{{name}}.yaml", "{{.name}}.yaml"),
-						huh.NewOption("Custom", "custom"),
-					).
-					Value(&pattern),
-			),
-		)
-
-		if err := patternForm.Run(); err != nil {
-			return nil, err
-		}
-
-		// If custom, prompt for pattern
-		if pattern == "custom" {
-			customForm := huh.NewForm(
-				huh.NewGroup(
-					huh.NewInput().
-						Title("Custom filename pattern").
-						Description("Use {{.template}} and {{.name}} as placeholders").
-						Placeholder("{{.template}}-{{.name}}.yaml").
-						Value(&pattern),
-				),
-			)
-
-			if err := customForm.Run(); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	return &OutputConfig{
-		Directory:       outputDirectory,
-		FilenamePattern: pattern,
-		SingleFile:      outputMode == "single",
-		DryRun:          false,
-	}, nil
 }
 
 // promptAPIURL prompts the user to confirm or change the API URL

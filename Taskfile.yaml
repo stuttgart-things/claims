@@ -65,6 +65,11 @@ tasks:
     cmds:
       - go run . render --non-interactive -t {{.TEMPLATE}} -p {{.PARAMS}} -o {{.OUTPUT_DIR}}
 
+  test-gitops:
+    desc: Run GitOps integration tests
+    cmds:
+      - ./tests/test_gitops.sh
+
   release:
     desc: Release binary via goreleaser using Dagger
     cmds:
