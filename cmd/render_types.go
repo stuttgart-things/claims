@@ -9,8 +9,9 @@ type RenderConfig struct {
 	Templates []string
 
 	// Parameter input
-	ParamsFile   string
-	InlineParams map[string]string
+	ParamsFile      string
+	InlineParams    map[string]string
+	InlineParamsRaw []string
 
 	// Output configuration
 	OutputDir       string

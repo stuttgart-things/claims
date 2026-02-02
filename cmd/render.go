@@ -4,17 +4,23 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
-	"github.com/stuttgart-things/claims/internal/templates"
 )
 
 var (
-	apiURL           string
-	outputDir        string
-	dryRun           bool
-	singleFile       bool
-	filenamePattern  string
-	templateNames    []string
+	apiURL          string
+	outputDir       string
+	dryRun          bool
+	singleFile      bool
+	filenamePattern string
+	templateNames   []string
+
+	// Non-interactive mode flags
+	paramsFile     string
+	inlineParams   []string
+	interactive    bool
+	nonInteractive bool
 )
 
 var renderCmd = &cobra.Command{
@@ -31,6 +37,13 @@ func init() {
 	renderCmd.Flags().BoolVar(&singleFile, "single-file", false, "Combine all resources into one file")
 	renderCmd.Flags().StringVar(&filenamePattern, "filename-pattern", "{{.template}}-{{.name}}.yaml", "Pattern for output filenames")
 	renderCmd.Flags().StringSliceVarP(&templateNames, "templates", "t", nil, "Templates to render (comma-separated or repeated)")
+
+	// Non-interactive mode flags
+	renderCmd.Flags().StringVarP(&paramsFile, "params-file", "f", "", "YAML/JSON file with parameters")
+	renderCmd.Flags().StringSliceVarP(&inlineParams, "param", "p", nil, "Inline param (key=value, repeatable)")
+	renderCmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Force interactive mode")
+	renderCmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Force non-interactive mode")
+
 	rootCmd.AddCommand(renderCmd)
 }
 
@@ -45,19 +58,47 @@ func runRender(cmd *cobra.Command, args []string) {
 		apiURL = "http://localhost:8080"
 	}
 
-	// Allow user to confirm or change API URL
-	confirmedURL, err := promptAPIURL(apiURL)
+	// Build render config
+	config := &RenderConfig{
+		APIUrl:          apiURL,
+		Templates:       templateNames,
+		ParamsFile:      paramsFile,
+		InlineParamsRaw: inlineParams,
+		OutputDir:       outputDir,
+		FilenamePattern: filenamePattern,
+		SingleFile:      singleFile,
+		DryRun:          dryRun,
+	}
+
+	// Determine mode
+	if nonInteractive {
+		config.Interactive = false
+	} else if interactive {
+		config.Interactive = true
+	} else {
+		// Auto-detect: interactive if TTY, non-interactive otherwise
+		config.Interactive = isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
+	}
+
+	var err error
+	if config.Interactive {
+		// Interactive mode - prompt for API URL confirmation
+		confirmedURL, promptErr := promptAPIURL(apiURL)
+		if promptErr != nil {
+			fmt.Printf("Error: %v\n", promptErr)
+			os.Exit(1)
+		}
+		config.APIUrl = confirmedURL
+		fmt.Printf("\nConnecting to API: %s\n\n", config.APIUrl)
+
+		err = runInteractive(config)
+	} else {
+		fmt.Printf("Connecting to API: %s\n\n", config.APIUrl)
+		err = runNonInteractive(config)
+	}
+
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Println(errorStyle.Render(err.Error()))
 		os.Exit(1)
 	}
-	apiURL = confirmedURL
-
-	fmt.Printf("\nConnecting to API: %s\n\n", apiURL)
-
-	// Create API client
-	client := templates.NewClient(apiURL)
-
-	// Run interactive render flow
-	runInteractiveRender(client)
 }
