@@ -116,6 +116,14 @@ func executeGitOperations(results []RenderResult, config *RenderConfig) error {
 			return err
 		}
 		fmt.Println(successStyle.Render("Pushed successfully"))
+
+		// Create PR if requested (after successful push)
+		if config.PRConfig != nil && config.PRConfig.Create {
+			repoPath := g.RepoPath
+			if err := executePRCreation(results, config, repoPath); err != nil {
+				return fmt.Errorf("creating pull request: %w", err)
+			}
+		}
 	}
 
 	return nil

@@ -32,6 +32,13 @@ var (
 	gitRepoURL      string
 	gitUser         string
 	gitToken        string
+
+	// PR flags
+	createPR      bool
+	prTitle       string
+	prDescription string
+	prLabels      []string
+	prBase        string
 )
 
 var renderCmd = &cobra.Command{
@@ -66,6 +73,13 @@ func init() {
 	renderCmd.Flags().StringVar(&gitUser, "git-user", "", "Git username (or GIT_USER env)")
 	renderCmd.Flags().StringVar(&gitToken, "git-token", "", "Git token (or GIT_TOKEN/GITHUB_TOKEN env)")
 
+	// PR flags
+	renderCmd.Flags().BoolVar(&createPR, "create-pr", false, "Create a pull request after push")
+	renderCmd.Flags().StringVar(&prTitle, "pr-title", "", "PR title (default: auto-generated)")
+	renderCmd.Flags().StringVar(&prDescription, "pr-description", "", "PR description")
+	renderCmd.Flags().StringSliceVar(&prLabels, "pr-labels", nil, "PR labels (comma-separated)")
+	renderCmd.Flags().StringVar(&prBase, "pr-base", "main", "Base branch for PR")
+
 	rootCmd.AddCommand(renderCmd)
 }
 
@@ -93,10 +107,10 @@ func runRender(cmd *cobra.Command, args []string) {
 	}
 
 	// Build git config if any git flags are set
-	if gitCommit || gitPush || gitBranch != "" || gitRepoURL != "" {
+	if gitCommit || gitPush || gitBranch != "" || gitRepoURL != "" || createPR {
 		config.GitConfig = &GitConfig{
-			Commit:       gitCommit || gitPush, // Push implies commit
-			Push:         gitPush,
+			Commit:       gitCommit || gitPush || createPR, // Push/PR implies commit
+			Push:         gitPush || createPR,              // PR implies push
 			CreateBranch: gitCreateBranch,
 			Message:      gitMessage,
 			Branch:       gitBranch,
@@ -104,6 +118,17 @@ func runRender(cmd *cobra.Command, args []string) {
 			RepoURL:      gitRepoURL,
 			User:         gitUser,
 			Token:        gitToken,
+		}
+	}
+
+	// Build PR config if PR flags are set
+	if createPR || prTitle != "" || prDescription != "" || len(prLabels) > 0 {
+		config.PRConfig = &PRConfig{
+			Create:      createPR,
+			Title:       prTitle,
+			Description: prDescription,
+			Labels:      prLabels,
+			BaseBranch:  prBase,
 		}
 	}
 
