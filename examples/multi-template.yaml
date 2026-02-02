@@ -1,0 +1,26 @@
+# Multi-template batch rendering example
+# Usage: claims render --non-interactive -f examples/multi-template.yaml -o ./manifests
+
+templates:
+  # VM for application server
+  - name: vspherevm
+    parameters:
+      name: app-server
+      cpu: 4
+      memory: 8Gi
+      disk: 100Gi
+
+  # Database for application
+  - name: postgresql
+    parameters:
+      name: app-database
+      version: "15"
+      storage: 20Gi
+
+  # Another VM for worker node
+  - name: vspherevm
+    parameters:
+      name: worker-node
+      cpu: 2
+      memory: 4Gi
+      disk: 50Gi

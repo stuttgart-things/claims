@@ -1,0 +1,49 @@
+# GitOps workflow example - Infrastructure deployment
+#
+# This example demonstrates a complete GitOps workflow:
+# 1. Render multiple infrastructure templates
+# 2. Commit to a new feature branch
+# 3. Push to remote
+# 4. Create a pull request
+#
+# Usage:
+#   claims render --non-interactive \
+#     -f examples/gitops-workflow.yaml \
+#     -o ./manifests \
+#     --git-create-branch \
+#     --git-branch feature/infra-$(date +%Y%m%d) \
+#     --create-pr \
+#     --pr-title "Infrastructure update" \
+#     --pr-labels "infrastructure,automated"
+
+templates:
+  # Production database
+  - name: postgresql
+    parameters:
+      name: prod-database
+      version: "15"
+      storage: 100Gi
+      replicas: 3
+
+  # Production VM cluster
+  - name: vspherevm
+    parameters:
+      name: prod-app-1
+      cpu: 8
+      memory: 16Gi
+      disk: 200Gi
+
+  - name: vspherevm
+    parameters:
+      name: prod-app-2
+      cpu: 8
+      memory: 16Gi
+      disk: 200Gi
+
+  # Staging environment
+  - name: vspherevm
+    parameters:
+      name: staging-app
+      cpu: 4
+      memory: 8Gi
+      disk: 100Gi

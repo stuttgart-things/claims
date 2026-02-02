@@ -265,6 +265,44 @@ task render-inline TEMPLATE=vspherevm PARAMS=name=test
 task render-inline TEMPLATE=vspherevm PARAMS="name=test,cpu=4"
 ```
 
+## Testing
+
+Run all unit tests:
+
+```bash
+go test ./...
+```
+
+Run tests with verbose output:
+
+```bash
+go test ./... -v
+```
+
+Run integration tests (requires `CLAIM_API_URL` to be set):
+
+```bash
+CLAIM_API_URL=http://localhost:8080 go test -tags=integration ./tests/integration/...
+```
+
+Run GitOps shell tests:
+
+```bash
+./tests/test_gitops.sh
+# or via task
+task test-gitops
+```
+
+### Test Coverage
+
+| Package | Description |
+|---------|-------------|
+| `cmd/` | Output logic, review functionality |
+| `internal/templates/` | API client with mocked HTTP server |
+| `internal/gitops/` | Git operations, branch management, auth |
+| `internal/params/` | Parameter file parsing, inline params |
+| `tests/integration/` | End-to-end render workflow tests |
+
 ## Project Structure
 
 ```
@@ -277,6 +315,8 @@ task render-inline TEMPLATE=vspherevm PARAMS="name=test,cpu=4"
 │   ├── render_noninteractive.go # Non-interactive mode for CI/CD
 │   ├── render_review.go       # Review/preview step before saving
 │   ├── render_output.go       # File output logic (separate/single file, dry-run)
+│   ├── render_output_test.go  # Output logic tests
+│   ├── render_review_test.go  # Review functionality tests
 │   ├── render_git.go          # Git operations integration
 │   ├── render_pr.go           # Pull request creation integration
 │   ├── render_types.go        # Type definitions for render config/results
@@ -289,14 +329,27 @@ task render-inline TEMPLATE=vspherevm PARAMS="name=test,cpu=4"
 │   │   └── client_test.go     # Client unit tests
 │   ├── gitops/
 │   │   ├── operations.go      # Git operations (clone, add, commit, push)
+│   │   ├── operations_test.go # Git operations tests
 │   │   ├── branch.go          # Branch management
+│   │   ├── branch_test.go     # Branch management tests
 │   │   ├── auth.go            # Credential resolution
-│   │   └── pr.go              # Pull request creation via gh CLI
+│   │   ├── auth_test.go       # Auth tests
+│   │   ├── pr.go              # Pull request creation via gh CLI
+│   │   └── pr_test.go         # PR creation tests
 │   └── params/
-│       └── ...                # Parameter parsing
+│       ├── types.go           # Parameter types
+│       ├── file.go            # File parsing logic
+│       └── file_test.go       # Parameter parsing tests
 ├── tests/
 │   ├── params.yaml            # Example params file for testing
-│   └── test_gitops.sh         # GitOps integration tests
+│   ├── test_gitops.sh         # GitOps integration tests (shell)
+│   └── integration/
+│       └── render_test.go     # End-to-end integration tests
+├── examples/
+│   ├── basic-params.yaml      # Basic single-template example
+│   ├── multi-template.yaml    # Multi-template batch rendering
+│   └── gitops-workflow.yaml   # GitOps workflow example
+├── docs/                      # Detailed documentation
 ├── go.mod                     # Go module definition
 ├── Taskfile.yaml              # Task automation
 ├── catalog-info.yaml          # Backstage component definition
