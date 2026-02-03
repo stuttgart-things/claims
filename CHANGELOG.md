@@ -1,3 +1,10 @@
+## [0.3.2](https://github.com/stuttgart-things/claims/compare/v0.3.1...v0.3.2) (2026-02-03)
+
+
+### Bug Fixes
+
+* fix/fix-claude-release ([8d3e000](https://github.com/stuttgart-things/claims/commit/8d3e0008d773c9ba03b040e953e424173e684d46))
+
 ## [0.3.1](https://github.com/stuttgart-things/claims/compare/v0.3.0...v0.3.1) (2026-02-03)
 
 
