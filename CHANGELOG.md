@@ -1,3 +1,10 @@
+# [0.3.0](https://github.com/stuttgart-things/claims/compare/v0.2.0...v0.3.0) (2026-02-03)
+
+
+### Features
+
+* fix/update-releaser-config ([2ce3d51](https://github.com/stuttgart-things/claims/commit/2ce3d518ead50454798260899fba1e6db59d7401))
+
 # [0.2.0](https://github.com/stuttgart-things/claims/compare/v0.1.0...v0.2.0) (2026-02-03)
 
 
