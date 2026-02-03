@@ -70,16 +70,16 @@ tasks:
     cmds:
       - ./tests/test_gitops.sh
 
-  release:
+  release-binary:
     desc: Release binary via goreleaser using Dagger
     cmds:
+      - task: git:pr
+      - task: git:release
       - task: goBuild:release
         vars:
           SRC: .
-          CHECK_ONLY: "{{ .CHECK_ONLY | default `false` }}"
+          CHECK_ONLY:
+            sh: |
+              gum choose --header "Perform a dry run only?" "true" "false" || echo "false"
           OUTPUT_PATH: /tmp/claims/goreleaser.log
           RELEASER_VERSION: v2.13.3
-    vars:
-      CHECK_ONLY:
-        sh: |
-          gum choose --header "Perform a dry run only?" "true" "false" || echo "false"
