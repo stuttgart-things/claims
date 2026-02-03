@@ -82,3 +82,20 @@ tasks:
               gum choose --header "Perform a dry run only?" "true" "false" || echo "false"
           OUTPUT_PATH: /tmp/claims/goreleaser.log
           RELEASER_VERSION: v2.13.3
+
+  run-claim-api:
+    desc: Run claim-machinery-api via Dagger
+    vars:
+      API_MODULE: '{{ .API_MODULE | default "github.com/stuttgart-things/claim-machinery-api/.dagger"}}'
+      API_SOURCE_CODE: '{{.API_SOURCE_CODE | default "https://github.com/stuttgart-things/claim-machinery-api#main"}}'
+      API_PROFILE_FILE: '{{.API_PROFILE_FILE | default "tests/api-profile.yaml"}}'
+      API_HOST_PORT: '{{.API_HOST_PORT | default "8080"}}'
+    cmds:
+      - >
+        dagger call
+        -m {{ .API_MODULE }}
+        run-api
+        --source "{{ .API_SOURCE_CODE }}"
+        --profile-file {{ .API_PROFILE_FILE }}
+        --host-port {{ .API_HOST_PORT }}
+        up --progress plain
