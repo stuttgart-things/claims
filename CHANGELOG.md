@@ -1,3 +1,10 @@
+## [0.3.1](https://github.com/stuttgart-things/claims/compare/v0.3.0...v0.3.1) (2026-02-03)
+
+
+### Bug Fixes
+
+* fix/goreleaser-claude-config ([9c9439b](https://github.com/stuttgart-things/claims/commit/9c9439bacac71aac3f32f2a9df39e868d41d4ef6))
+
 # [0.3.0](https://github.com/stuttgart-things/claims/compare/v0.2.0...v0.3.0) (2026-02-03)
 
 
