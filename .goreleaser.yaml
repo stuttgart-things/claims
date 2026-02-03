@@ -3,6 +3,9 @@
 
 version: 2
 
+git:
+  allow_dirty: true
+
 before:
   hooks:
     - go mod tidy
