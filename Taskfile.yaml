@@ -70,7 +70,7 @@ tasks:
     cmds:
       - ./tests/test_gitops.sh
 
-  release-binary:
+  release-bin:
     desc: Release binary via goreleaser using Dagger
     cmds:
       - task: git:release
