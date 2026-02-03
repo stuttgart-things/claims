@@ -73,7 +73,6 @@ tasks:
   release-binary:
     desc: Release binary via goreleaser using Dagger
     cmds:
-      - task: git:pr
       - task: git:release
       - task: goBuild:release
         vars:
