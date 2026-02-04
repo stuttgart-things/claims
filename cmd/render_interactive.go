@@ -877,25 +877,39 @@ func collectAllParams(selectedNames []string, templateMap map[string]*templates.
 func collectTemplateParams(tmpl *templates.ClaimTemplate) (map[string]any, error) {
 	params := make(map[string]any)
 	paramValues := make(map[string]*string)
+	multiValues := make(map[string]*[]string)
 
 	// Create form fields for each parameter
 	var formGroups []*huh.Group
 	var currentFields []huh.Field
 
 	for _, p := range tmpl.Spec.Parameters {
-		// Initialize with default
-		defaultVal := ""
-		if p.Default != nil {
-			defaultVal = fmt.Sprintf("%v", p.Default)
+		isMultiselect := p.Multiselect && len(p.Enum) > 0
+
+		if isMultiselect {
+			// Parse array defaults into []string
+			defaults := parseDefaultSlice(p.Default)
+			multiValues[p.Name] = &defaults
+		} else {
+			// Initialize with default
+			defaultVal := ""
+			if p.Default != nil {
+				defaultVal = fmt.Sprintf("%v", p.Default)
+			}
+			paramValues[p.Name] = &defaultVal
 		}
-		paramValues[p.Name] = &defaultVal
 
 		// Skip hidden parameters
 		if p.Hidden {
 			continue
 		}
 
-		field := createField(p, paramValues[p.Name])
+		var field huh.Field
+		if isMultiselect {
+			field = createMultiselectField(p, multiValues[p.Name])
+		} else {
+			field = createField(p, paramValues[p.Name])
+		}
 		if field != nil {
 			currentFields = append(currentFields, field)
 		}
@@ -920,20 +934,74 @@ func collectTemplateParams(tmpl *templates.ClaimTemplate) (map[string]any, error
 
 	// Resolve values
 	for _, p := range tmpl.Spec.Parameters {
-		strVal := *paramValues[p.Name]
-		if strVal == "" {
-			continue
+		isMultiselect := p.Multiselect && len(p.Enum) > 0
+
+		if isMultiselect {
+			selected := *multiValues[p.Name]
+			if len(selected) > 0 {
+				// Store as []interface{} for JSON marshalling compatibility
+				vals := make([]interface{}, len(selected))
+				for i, v := range selected {
+					vals[i] = v
+				}
+				params[p.Name] = vals
+			}
+		} else {
+			strVal := *paramValues[p.Name]
+			if strVal == "" {
+				continue
+			}
+			// Handle random selection
+			if strVal == randomMarker && len(p.Enum) > 0 {
+				randomIdx := rand.Intn(len(p.Enum))
+				strVal = p.Enum[randomIdx]
+				fmt.Printf("Random selection for %s: %s\n", p.Name, strVal)
+			}
+			params[p.Name] = strVal
 		}
-		// Handle random selection
-		if strVal == randomMarker && len(p.Enum) > 0 {
-			randomIdx := rand.Intn(len(p.Enum))
-			strVal = p.Enum[randomIdx]
-			fmt.Printf("Random selection for %s: %s\n", p.Name, strVal)
-		}
-		params[p.Name] = strVal
 	}
 
 	return params, nil
+}
+
+// parseDefaultSlice converts a default value into a []string.
+// Handles []interface{} (from JSON unmarshalling) and single values.
+func parseDefaultSlice(v interface{}) []string {
+	if v == nil {
+		return nil
+	}
+	switch val := v.(type) {
+	case []interface{}:
+		result := make([]string, len(val))
+		for i, item := range val {
+			result[i] = fmt.Sprintf("%v", item)
+		}
+		return result
+	case []string:
+		return val
+	default:
+		return []string{fmt.Sprintf("%v", v)}
+	}
+}
+
+// createMultiselectField creates a huh.MultiSelect field for multiselect parameters
+func createMultiselectField(p templates.Parameter, value *[]string) huh.Field {
+	title := p.Title
+	if p.Required {
+		title += " *"
+	}
+
+	var options []huh.Option[string]
+	for _, e := range p.Enum {
+		enumStr := fmt.Sprintf("%v", e)
+		options = append(options, huh.NewOption(enumStr, enumStr))
+	}
+
+	return huh.NewMultiSelect[string]().
+		Title(title).
+		Description(p.Description).
+		Options(options...).
+		Value(value)
 }
 
 // renderAllTemplates renders all templates and returns results
