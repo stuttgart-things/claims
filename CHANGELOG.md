@@ -1,3 +1,13 @@
+# [0.4.0](https://github.com/stuttgart-things/claims/compare/v0.3.2...v0.4.0) (2026-02-04)
+
+
+### Features
+
+* add multiselect parameter support for claim templates ([6258c3b](https://github.com/stuttgart-things/claims/commit/6258c3b00ec56b99bcdedbf9d116b8474ecaa64f)), closes [#42](https://github.com/stuttgart-things/claims/issues/42)
+* feat/add-api-dagger-call ([72a598d](https://github.com/stuttgart-things/claims/commit/72a598db6534f4cb2f568c571d4a2b4496abe7c2))
+* feat/add-api-dagger-call ([237282f](https://github.com/stuttgart-things/claims/commit/237282fa477d4b1944ba3059fcda0eb298aa1f5a))
+* feat/add-release ([08312ea](https://github.com/stuttgart-things/claims/commit/08312ea53fec829228b75973c2045910e8016be0))
+
 ## [0.3.2](https://github.com/stuttgart-things/claims/compare/v0.3.1...v0.3.2) (2026-02-03)
 
 
