@@ -1,0 +1,16 @@
+apiVersion: resources.stuttgart-things.com/v1alpha1
+kind: VolumeClaim
+metadata:
+  annotations:
+    example.com/managed-by: kcl-test
+  name: app-data
+  namespace: default
+spec:
+  accessModes:
+  - ReadWriteOnce
+  namespace: default
+  providerConfigRef: default-k8s
+  pvcName: app-data
+  storage: '20Gi'
+  storageClassName: standard
+  volumeMode: Filesystem
