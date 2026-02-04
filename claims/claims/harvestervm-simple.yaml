@@ -11,7 +11,7 @@ spec:
     pvcName: demo-harvester-vm-root
     namespace: default
     storageClassName: harvester-longhorn
-    storage: '80Gi'
+    storage: '20Gi'
     accessModes:
     - ReadWriteOnce
     volumeMode: Filesystem
@@ -47,12 +47,12 @@ spec:
     os: ubuntu
     machineType: q35
     cpu:
-      cores: 8
+      cores: 2
       sockets: 1
       threads: 1
     resources:
-      memory: '8Gi'
-      cpu: '8'
+      memory: '2Gi'
+      cpu: '2'
     disks:
     - name: rootdisk
       bus: virtio
