@@ -1,0 +1,64 @@
+apiVersion: resources.stuttgart-things.com/v1alpha1
+kind: HarvesterVM
+metadata:
+  annotations:
+    crossplane.io/managed-by: kcl
+  name: demo-harvester-vm
+  namespace: default
+spec:
+  providerConfigRef: dev
+  volume:
+    pvcName: demo-harvester-vm-root
+    namespace: default
+    storageClassName: harvester-longhorn
+    storage: '80Gi'
+    accessModes:
+    - ReadWriteOnce
+    volumeMode: Filesystem
+    labels:
+      app: demo-harvester-vm
+  cloudInit:
+    vmName: demo-harvester-vm
+    namespace: default
+    hostname: demo
+    domain: stuttgart-things.local
+    timezone: Europe/Berlin
+    users:
+    - name: ubuntu
+      sudo: ALL=(ALL) NOPASSWD:ALL
+      groups: sudo
+      shell: /bin/bash
+    packages:
+    - qemu-guest-agent
+    - curl
+    - vim
+    runcmd:
+    - systemctl enable qemu-guest-agent
+    - systemctl start qemu-guest-agent
+    packageUpdate: true
+    packageUpgrade: false
+    sshPasswordAuth: false
+    disableRoot: true
+  vm:
+    description: Harvester VM managed by Crossplane
+    runStrategy: RerunOnFailure
+    evictionStrategy: LiveMigrateIfPossible
+    terminationGracePeriodSeconds: 120
+    os: ubuntu
+    machineType: q35
+    cpu:
+      cores: 8
+      sockets: 1
+      threads: 1
+    resources:
+      memory: '8Gi'
+      cpu: '8'
+    disks:
+    - name: rootdisk
+      bus: virtio
+      bootOrder: 1
+    - name: cloudinitdisk
+      bus: virtio
+    networks:
+    - name: default
+      networkName: default/default
