@@ -36,6 +36,7 @@ type Parameter struct {
 	Pattern     string      `json:"pattern,omitempty"`
 	Hidden      bool        `json:"hidden,omitempty"`
 	AllowRandom bool        `json:"allowRandom,omitempty"`
+	Multiselect bool        `json:"multiselect,omitempty"`
 }
 
 // ClaimTemplateList is a list of claim templates
