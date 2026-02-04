@@ -9,16 +9,19 @@ import (
 func ResolveCredentials(user, token string) (string, string, error) {
 	if user == "" {
 		user = os.Getenv("GIT_USER")
+		if user == "" {
+			user = os.Getenv("GITHUB_USER")
+		}
 	}
 	if token == "" {
 		token = os.Getenv("GIT_TOKEN")
 		if token == "" {
-			token = os.Getenv("GITHUB_TOKEN") // GitHub Actions compatibility
+			token = os.Getenv("GITHUB_TOKEN")
 		}
 	}
 
 	if user == "" || token == "" {
-		return "", "", fmt.Errorf("git credentials required: set --git-user/--git-token or GIT_USER/GIT_TOKEN environment variables")
+		return "", "", fmt.Errorf("git credentials required:\nset --git-user/--git-token or GIT_USER/GIT_TOKEN (or GITHUB_USER/GITHUB_TOKEN) environment variables")
 	}
 
 	return user, token, nil
@@ -29,6 +32,9 @@ func ResolveCredentials(user, token string) (string, string, error) {
 func ResolveCredentialsOptional(user, token string) (string, string) {
 	if user == "" {
 		user = os.Getenv("GIT_USER")
+		if user == "" {
+			user = os.Getenv("GITHUB_USER")
+		}
 	}
 	if token == "" {
 		token = os.Getenv("GIT_TOKEN")
