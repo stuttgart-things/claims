@@ -97,8 +97,12 @@ func (g *GitOps) AddFiles(files []string) error {
 	}
 
 	for _, f := range files {
-		// Convert absolute path to relative
-		relPath, err := filepath.Rel(g.RepoPath, f)
+		// Resolve to absolute path first, then convert to repo-relative
+		absFile, err := filepath.Abs(f)
+		if err != nil {
+			absFile = f
+		}
+		relPath, err := filepath.Rel(g.RepoPath, absFile)
 		if err != nil {
 			relPath = f
 		}

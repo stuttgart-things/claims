@@ -272,7 +272,7 @@ type destinationChoice struct {
 	createPR bool
 }
 
-// runDestinationChoice asks the user whether to save locally, commit to git, or create a PR
+// runDestinationChoice asks the user whether to save locally or commit+push+PR via git
 func runDestinationChoice() (destinationChoice, error) {
 	var destination string
 
@@ -282,9 +282,8 @@ func runDestinationChoice() (destinationChoice, error) {
 				Title("Where to save?").
 				Description("Choose how to save the rendered files").
 				Options(
-					huh.NewOption("Save locally only", "local"),
-					huh.NewOption("Commit to git repository", "git"),
-					huh.NewOption("Commit, push & create PR", "pr"),
+					huh.NewOption("Local", "local"),
+					huh.NewOption("Git (commit, push & create PR)", "pr"),
 				).
 				Value(&destination),
 		),
@@ -295,7 +294,7 @@ func runDestinationChoice() (destinationChoice, error) {
 	}
 
 	return destinationChoice{
-		useGit:   destination == "git" || destination == "pr",
+		useGit:   destination == "pr",
 		createPR: destination == "pr",
 	}, nil
 }

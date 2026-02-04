@@ -70,7 +70,7 @@ func init() {
 	renderCmd.Flags().StringVar(&gitMessage, "git-message", "", "Commit message (default: auto-generated)")
 	renderCmd.Flags().StringVar(&gitRemote, "git-remote", "origin", "Git remote name")
 	renderCmd.Flags().StringVar(&gitRepoURL, "git-repo-url", "", "Clone from URL instead of using local repo")
-	renderCmd.Flags().StringVar(&gitUser, "git-user", "", "Git username (or GIT_USER env)")
+	renderCmd.Flags().StringVar(&gitUser, "git-user", "", "Git username (or GIT_USER/GITHUB_USER env)")
 	renderCmd.Flags().StringVar(&gitToken, "git-token", "", "Git token (or GIT_TOKEN/GITHUB_TOKEN env)")
 
 	// PR flags
