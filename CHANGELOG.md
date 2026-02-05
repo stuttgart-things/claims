@@ -1,3 +1,11 @@
+# [0.5.0](https://github.com/stuttgart-things/claims/compare/v0.4.0...v0.5.0) (2026-02-05)
+
+
+### Features
+
+* feat/add-pvc ([6147d71](https://github.com/stuttgart-things/claims/commit/6147d71cbe5a2d9f473e85e35725ab12860cc99a))
+* feat/add-pvc ([5bd492c](https://github.com/stuttgart-things/claims/commit/5bd492cfa80cbeea1bfe2990b23c0767ae931ea4))
+
 # [0.4.0](https://github.com/stuttgart-things/claims/compare/v0.3.2...v0.4.0) (2026-02-04)
 
 
