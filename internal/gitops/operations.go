@@ -171,6 +171,46 @@ func (g *GitOps) Push(remote, branch string) error {
 	return nil
 }
 
+// RemoveFiles stages file removals in the worktree
+func (g *GitOps) RemoveFiles(files []string) error {
+	worktree, err := g.repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("getting worktree: %w", err)
+	}
+
+	for _, f := range files {
+		absFile, err := filepath.Abs(f)
+		if err != nil {
+			absFile = f
+		}
+		relPath, err := filepath.Rel(g.RepoPath, absFile)
+		if err != nil {
+			relPath = f
+		}
+
+		if _, err := worktree.Remove(relPath); err != nil {
+			return fmt.Errorf("staging removal of %s: %w", relPath, err)
+		}
+	}
+
+	return nil
+}
+
+// AddWithRemoved stages both additions and removals
+func (g *GitOps) AddWithRemoved(added, removed []string) error {
+	if len(added) > 0 {
+		if err := g.AddFiles(added); err != nil {
+			return err
+		}
+	}
+	if len(removed) > 0 {
+		if err := g.RemoveFiles(removed); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Cleanup removes the repository directory (for clone-based workflows)
 func (g *GitOps) Cleanup() error {
 	return os.RemoveAll(g.RepoPath)

@@ -123,6 +123,11 @@ func runNonInteractive(config *RenderConfig) error {
 		return err
 	}
 
+	// Update registry if output was written (and not dry-run)
+	if !config.DryRun {
+		updateRegistryForRender(results, config)
+	}
+
 	// Execute git operations if configured (and not dry-run)
 	if !config.DryRun {
 		if err := executeGitOperations(results, config); err != nil {
