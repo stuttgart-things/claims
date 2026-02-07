@@ -1,0 +1,174 @@
+package cmd
+
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+
+	"github.com/stuttgart-things/claims/internal/gitops"
+)
+
+// executeDeleteGitOperations performs git commit, push, and PR creation for a delete operation
+func executeDeleteGitOperations(result *DeleteResult, config *DeleteConfig, repoRoot string) error {
+	if config.GitConfig == nil {
+		return nil
+	}
+
+	// Resolve credentials
+	user, token := config.GitConfig.User, config.GitConfig.Token
+	if config.GitConfig.Push {
+		var err error
+		user, token, err = gitops.ResolveCredentials(user, token)
+		if err != nil {
+			return err
+		}
+	} else {
+		user, token = gitops.ResolveCredentialsOptional(user, token)
+	}
+
+	g, err := gitops.New(repoRoot, user, token)
+	if err != nil {
+		return err
+	}
+
+	// Create branch
+	branchName := config.GitConfig.Branch
+	if branchName == "" {
+		branchName = fmt.Sprintf("delete-%s", result.ResourceName)
+	}
+
+	if config.GitConfig.CreateBranch || config.GitConfig.Branch == "" {
+		fmt.Printf("Creating branch: %s\n", branchName)
+		if err := g.CreateBranch(branchName); err != nil {
+			return err
+		}
+	} else {
+		fmt.Printf("Checking out branch: %s\n", branchName)
+		if err := g.CheckoutBranch(branchName); err != nil {
+			return err
+		}
+	}
+
+	// Stage modified files (kustomization.yaml and registry.yaml)
+	var filesToAdd []string
+
+	kustomizationPath := filepath.Join(repoRoot, "claims", result.Category, "kustomization.yaml")
+	filesToAdd = append(filesToAdd, kustomizationPath)
+
+	registryPath := filepath.Join(repoRoot, config.RegistryPath)
+	filesToAdd = append(filesToAdd, registryPath)
+
+	fmt.Println("Staging changes...")
+	if err := g.AddFiles(filesToAdd); err != nil {
+		return err
+	}
+
+	// Stage the removed directory
+	// go-git's worktree.Add with the removed dir path stages the deletion
+	removedDir := filepath.Join(repoRoot, "claims", result.Category, result.ResourceName)
+	relRemoved, _ := filepath.Rel(repoRoot, removedDir)
+	worktree, err := g.GetRepo().Worktree()
+	if err != nil {
+		return fmt.Errorf("getting worktree: %w", err)
+	}
+	// Stage all changes including deletions via AddGlob on parent
+	if _, err := worktree.Add(relRemoved); err != nil {
+		// The directory is already removed, so we use status-based approach
+		// Stage the parent directory to pick up deletions
+		parentRel := filepath.Join("claims", result.Category)
+		if err := worktree.AddGlob(parentRel + "/*"); err != nil {
+			fmt.Printf("Warning: could not stage removed files: %v\n", err)
+		}
+	}
+
+	// Generate commit message
+	message := config.GitConfig.Message
+	if message == "" {
+		message = fmt.Sprintf("Delete claim: %s", result.ResourceName)
+	}
+
+	// Commit
+	fmt.Printf("Committing: %s\n", message)
+	if err := g.Commit(message, user, ""); err != nil {
+		return err
+	}
+	fmt.Println(successStyle.Render("Committed successfully"))
+
+	// Push
+	if config.GitConfig.Push {
+		remote := config.GitConfig.Remote
+		if remote == "" {
+			remote = "origin"
+		}
+
+		fmt.Printf("Pushing to %s...\n", remote)
+		if err := g.Push(remote, branchName); err != nil {
+			return err
+		}
+		fmt.Println(successStyle.Render("Pushed successfully"))
+
+		// Create PR
+		if config.PRConfig != nil && config.PRConfig.Create {
+			if err := executeDeletePRCreation(result, config, repoRoot, branchName); err != nil {
+				return fmt.Errorf("creating pull request: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// executeDeletePRCreation creates a PR for the delete operation
+func executeDeletePRCreation(result *DeleteResult, config *DeleteConfig, repoPath, headBranch string) error {
+	if err := gitops.CheckGHAuth(); err != nil {
+		return err
+	}
+
+	title := config.PRConfig.Title
+	if title == "" {
+		title = fmt.Sprintf("Delete claim: %s", result.ResourceName)
+	}
+
+	description := config.PRConfig.Description
+	if description == "" {
+		description = generateDeletePRDescription(result)
+	}
+
+	baseBranch := config.PRConfig.BaseBranch
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+
+	prConfig := gitops.PRConfig{
+		Title:       title,
+		Description: description,
+		Labels:      config.PRConfig.Labels,
+		BaseBranch:  baseBranch,
+		HeadBranch:  headBranch,
+	}
+
+	fmt.Println("Creating pull request...")
+	pr, err := gitops.CreatePR(prConfig, repoPath)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(successStyle.Render(fmt.Sprintf("Created PR: %s", pr.URL)))
+	return nil
+}
+
+// generateDeletePRDescription creates a PR description for the delete operation
+func generateDeletePRDescription(result *DeleteResult) string {
+	var sb strings.Builder
+
+	sb.WriteString("## Summary\n\n")
+	sb.WriteString(fmt.Sprintf("Delete claim **%s** from category **%s**\n\n", result.ResourceName, result.Category))
+	sb.WriteString("## Changes\n\n")
+	sb.WriteString(fmt.Sprintf("- Removed directory: `%s`\n", result.Path))
+	sb.WriteString(fmt.Sprintf("- Updated `claims/%s/kustomization.yaml`\n", result.Category))
+	sb.WriteString("- Updated `claims/registry.yaml`\n")
+	sb.WriteString("\n---\n")
+	sb.WriteString("*Generated by claims CLI*\n")
+
+	return sb.String()
+}
