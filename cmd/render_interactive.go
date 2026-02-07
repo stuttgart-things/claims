@@ -253,11 +253,14 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 		return fmt.Errorf("writing output: %w", err)
 	}
 
+	// Update registry if output was written (and not dry-run)
+	if !outputConfig.DryRun {
+		config.OutputDir = outputConfig.Directory
+		updateRegistryForRender(results, config)
+	}
+
 	// Execute git operations if configured (and not dry-run)
 	if !outputConfig.DryRun && config.GitConfig != nil {
-		// Update config with the actual output directory used
-		config.OutputDir = outputConfig.Directory
-
 		if err := executeGitOperations(results, config); err != nil {
 			return fmt.Errorf("git operations: %w", err)
 		}

@@ -5,8 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/stuttgart-things/claims/internal/gitops"
+	"github.com/stuttgart-things/claims/internal/registry"
 )
 
 // executeGitOperations performs git commit and push if configured
@@ -80,6 +82,13 @@ func executeGitOperations(results []RenderResult, config *RenderConfig) error {
 		return fmt.Errorf("no files to commit")
 	}
 
+	// Also stage registry.yaml if it was updated
+	repoPath := g.RepoPath
+	registryPath := filepath.Join(repoPath, "claims", "registry.yaml")
+	if _, err := os.Stat(registryPath); err == nil {
+		filePaths = append(filePaths, registryPath)
+	}
+
 	// Stage files
 	fmt.Println("Staging files...")
 	if err := g.AddFiles(filePaths); err != nil {
@@ -137,6 +146,87 @@ func executeGitOperations(results []RenderResult, config *RenderConfig) error {
 	}
 
 	return nil
+}
+
+// updateRegistryForRender adds entries to claims/registry.yaml for successful renders
+func updateRegistryForRender(results []RenderResult, config *RenderConfig) {
+	// Try to find repo root from output directory
+	repoRoot, err := findRepoRoot(config.OutputDir)
+	if err != nil {
+		return // Not in a git repo, skip registry update
+	}
+
+	registryPath := filepath.Join(repoRoot, "claims", "registry.yaml")
+
+	// Load or create registry
+	reg, err := registry.Load(registryPath)
+	if err != nil {
+		// Create new registry if file doesn't exist
+		if !os.IsNotExist(err) {
+			return
+		}
+		reg = registry.NewRegistry()
+	}
+
+	// Determine repository name from git remote (best effort)
+	repoName := ""
+	if config.GitConfig != nil && config.GitConfig.RepoURL != "" {
+		repoName = config.GitConfig.RepoURL
+	}
+
+	// Resolve git user for createdBy
+	createdBy := "cli"
+	if config.GitConfig != nil && config.GitConfig.User != "" {
+		createdBy = config.GitConfig.User
+	}
+
+	// Compute category from output directory relative to claims/
+	category := ""
+	relOut, err := filepath.Rel(filepath.Join(repoRoot, "claims"), config.OutputDir)
+	if err == nil && relOut != ".." && !strings.HasPrefix(relOut, "..") {
+		parts := strings.SplitN(relOut, string(filepath.Separator), 2)
+		if len(parts) > 0 && parts[0] != "." {
+			category = parts[0]
+		}
+	}
+
+	updated := false
+	for _, r := range results {
+		if r.Error != nil || r.OutputPath == "" {
+			continue
+		}
+
+		// Compute path relative to repo root
+		relPath, err := filepath.Rel(repoRoot, r.OutputPath)
+		if err != nil {
+			relPath = r.OutputPath
+		}
+
+		entry := registry.ClaimEntry{
+			Name:       r.ResourceName,
+			Template:   r.TemplateName,
+			Category:   category,
+			CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+			CreatedBy:  createdBy,
+			Source:     "cli",
+			Repository: repoName,
+			Path:       filepath.Dir(relPath),
+			Status:     "active",
+		}
+
+		registry.AddEntry(reg, entry)
+		updated = true
+	}
+
+	if updated {
+		// Ensure claims directory exists
+		if err := os.MkdirAll(filepath.Dir(registryPath), 0755); err != nil {
+			return
+		}
+		if err := registry.Save(registryPath, reg); err != nil {
+			fmt.Printf("Warning: could not update registry: %v\n", err)
+		}
+	}
 }
 
 // findRepoRoot finds the git repository root from a starting path
