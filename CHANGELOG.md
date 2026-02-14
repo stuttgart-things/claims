@@ -1,3 +1,17 @@
+# [0.6.0](https://github.com/stuttgart-things/claims/compare/v0.5.0...v0.6.0) (2026-02-14)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/go-git/go-git/v5 to v5.16.5 ([7207fd3](https://github.com/stuttgart-things/claims/commit/7207fd31018e3ca9957830993c3520048041c6ff))
+
+
+### Features
+
+* add delete and list commands with registry and kustomize support ([fe69a4c](https://github.com/stuttgart-things/claims/commit/fe69a4cd6efce66a1d3fdd8bbab1fb564ee84747))
+* add delete and list registry operations ([e357e74](https://github.com/stuttgart-things/claims/commit/e357e7404ab30fd7fc5b1e6b378c9045564610f3))
+* add encrypt command for SOPS-encrypted Kubernetes Secrets ([#58](https://github.com/stuttgart-things/claims/issues/58)) ([ddc299e](https://github.com/stuttgart-things/claims/commit/ddc299e96be7a34607841a1f9102133e511c8b1e)), closes [#57](https://github.com/stuttgart-things/claims/issues/57)
+
 # [0.5.0](https://github.com/stuttgart-things/claims/compare/v0.4.0...v0.5.0) (2026-02-05)
 
 
