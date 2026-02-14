@@ -33,6 +33,9 @@ go build -o claims .
 | Command | Description |
 |---------|-------------|
 | `claims render` | Interactively render a claim template via API |
+| `claims encrypt` | Create a SOPS-encrypted Kubernetes Secret via Git PR |
+| `claims delete` | Delete a claim via Git PR |
+| `claims list` | List claims from the registry |
 | `claims version` | Print version information |
 
 ### render
@@ -206,6 +209,85 @@ PR creation requires the GitHub CLI (`gh`) to be installed and authenticated:
 gh auth login
 ```
 
+### encrypt
+
+Create SOPS-encrypted Kubernetes Secrets using age encryption. Fetches a template from the API, collects secret values, generates a K8s Secret YAML, encrypts it with SOPS, and optionally commits via Git PR.
+
+```bash
+claims encrypt [flags]
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--api-url` | `-a` | API URL (default: `$CLAIM_API_URL` or `http://localhost:8080`) |
+| `--template` | `-t` | Template name to use |
+| `--name` | | Secret name |
+| `--namespace` | | Secret namespace |
+| `--params-file` | `-f` | YAML/JSON file with parameters |
+| `--param` | `-p` | Inline param (key=value, repeatable) |
+| `--output-dir` | `-o` | Output directory (default: `.`) |
+| `--filename-pattern` | | Filename pattern (default: `{{.name}}-secret.enc.yaml`) |
+| `--dry-run` | | Show encrypted output without writing files |
+| `--interactive` | `-i` | Force interactive mode |
+| `--non-interactive` | | Force non-interactive mode |
+| `--git-branch` | | Branch to use/create |
+| `--git-create-branch` | | Create the branch if it doesn't exist |
+| `--git-message` | | Commit message (default: auto-generated) |
+| `--git-remote` | | Git remote name (default: `origin`) |
+| `--git-repo-url` | | Clone from URL instead of using local repo |
+| `--git-user` | | Git username (or `$GIT_USER`/`$GITHUB_USER` env) |
+| `--git-token` | | Git token (or `$GIT_TOKEN`/`$GITHUB_TOKEN` env) |
+| `--create-pr` | | Create a pull request after push |
+| `--pr-title` | | PR title (default: auto-generated) |
+| `--pr-description` | | PR description |
+| `--pr-labels` | | PR labels (comma-separated) |
+| `--pr-base` | | Base branch for PR (default: `main`) |
+
+**Prerequisites:**
+
+- [sops](https://github.com/getsops/sops) CLI installed
+- `SOPS_AGE_RECIPIENTS` environment variable set (age public key)
+
+**Examples:**
+
+```bash
+# Interactive mode (prompts for template, secret name, values)
+claims encrypt
+
+# Non-interactive with inline params
+claims encrypt --non-interactive \
+  --template my-secret-template \
+  --name my-app-secret \
+  --namespace production \
+  --param username=admin \
+  --param password=s3cret
+
+# Non-interactive with params file
+claims encrypt --non-interactive \
+  --template my-secret-template \
+  --name db-credentials \
+  --namespace default \
+  -f examples/encrypt-params.yaml \
+  -o ./secrets
+
+# Dry run (preview without writing)
+claims encrypt --non-interactive \
+  --template my-secret-template \
+  --name my-app-secret \
+  --namespace default \
+  --param key=value \
+  --dry-run
+
+# Encrypt and create PR
+claims encrypt --non-interactive \
+  --template my-secret-template \
+  --name staging-secrets \
+  --namespace staging \
+  --param db_password=secret123 \
+  --create-pr --git-create-branch --git-branch feat/add-staging-secrets \
+  --pr-labels "secrets,automated"
+```
+
 ## Interactive Workflow
 
 The `claims render` command follows an interactive workflow:
@@ -234,6 +316,7 @@ The `claims render` command follows an interactive workflow:
 | `GIT_USER` | Git username for push operations | - |
 | `GIT_TOKEN` | Git token/password for push operations | - |
 | `GITHUB_TOKEN` | GitHub token (fallback for `GIT_TOKEN`) | - |
+| `SOPS_AGE_RECIPIENTS` | age public key for SOPS encryption (required for `encrypt`) | - |
 
 ## Available Tasks
 
@@ -301,6 +384,8 @@ task test-gitops
 | `internal/templates/` | API client with mocked HTTP server |
 | `internal/gitops/` | Git operations, branch management, auth |
 | `internal/params/` | Parameter file parsing, inline params |
+| `internal/sops/` | SOPS encryption, K8s Secret YAML generation |
+| `internal/registry/` | Registry CRUD operations |
 | `tests/integration/` | End-to-end render workflow tests |
 
 ## Project Structure
@@ -320,6 +405,17 @@ task test-gitops
 │   ├── render_git.go          # Git operations integration
 │   ├── render_pr.go           # Pull request creation integration
 │   ├── render_types.go        # Type definitions for render config/results
+│   ├── delete.go              # Delete command and flags
+│   ├── delete_interactive.go  # Interactive delete flow
+│   ├── delete_noninteractive.go # Non-interactive delete
+│   ├── delete_git.go          # Git operations for delete
+│   ├── delete_types.go        # Delete type definitions
+│   ├── encrypt.go             # Encrypt command and flags
+│   ├── encrypt_interactive.go # Interactive encrypt flow (SOPS)
+│   ├── encrypt_noninteractive.go # Non-interactive encrypt
+│   ├── encrypt_git.go         # Git operations for encrypt
+│   ├── encrypt_types.go       # Encrypt type definitions
+│   ├── list.go                # List command
 │   ├── version.go             # Version command
 │   └── logo.go                # ASCII logo rendering
 ├── internal/
@@ -336,6 +432,15 @@ task test-gitops
 │   │   ├── auth_test.go       # Auth tests
 │   │   ├── pr.go              # Pull request creation via gh CLI
 │   │   └── pr_test.go         # PR creation tests
+│   ├── sops/
+│   │   ├── sops.go            # SOPS binary interaction (check, encrypt)
+│   │   ├── secret.go          # K8s Secret YAML generation
+│   │   └── sops_test.go       # SOPS unit tests
+│   ├── registry/
+│   │   ├── registry.go        # Registry CRUD operations
+│   │   └── types.go           # Registry type definitions
+│   ├── kustomize/
+│   │   └── kustomize.go       # Kustomization.yaml operations
 │   └── params/
 │       ├── types.go           # Parameter types
 │       ├── file.go            # File parsing logic

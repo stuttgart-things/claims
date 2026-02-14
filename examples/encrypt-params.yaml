@@ -1,0 +1,19 @@
+# Encrypt params example - secret values for SOPS encryption
+#
+# Usage:
+#   export SOPS_AGE_RECIPIENTS="age1..."
+#   claims encrypt --non-interactive \
+#     --template my-secret-template \
+#     --name db-credentials \
+#     --namespace production \
+#     -f examples/encrypt-params.yaml \
+#     -o ./secrets
+
+template: my-secret-template
+parameters:
+  db_host: postgres.production.svc.cluster.local
+  db_port: "5432"
+  db_name: myapp
+  db_user: app_user
+  db_password: super-secret-password
+  db_ssl_mode: require
