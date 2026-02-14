@@ -1,11 +1,11 @@
 dev-cluster:
-  - name: demo-harvester-vm
-    namespace: default
-    claimRef: resources.stuttgart-things.com/v1alpha1/HarvesterVM
-    statusMessage: unknown
-    lastCheckedAt: ""
-  - name: demo-volume-claim
-    namespace: default
-    claimRef: resources.stuttgart-things.com/v1alpha1/VolumeClaim
-    statusMessage: unknown
-    lastCheckedAt: ""
+    - name: demo-harvester-vm
+      namespace: default
+      claimRef: resources.stuttgart-things.com/v1alpha1/HarvesterVM
+      statusMessage: ready
+      lastCheckedAt: "2026-02-14T16:09:55Z"
+    - name: demo-volume-claim
+      namespace: default
+      claimRef: resources.stuttgart-things.com/v1alpha1/VolumeClaim
+      statusMessage: unknown
+      lastCheckedAt: ""
