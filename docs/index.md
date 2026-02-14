@@ -38,58 +38,43 @@ task run
 
 ## Commands
 
-### render
+| Command | Description |
+|---------|-------------|
+| `claims render` | Interactively render a claim template via API |
+| `claims encrypt` | Create a SOPS-encrypted Kubernetes Secret via Git PR |
+| `claims delete` | Delete a claim via Git PR |
+| `claims list` | List claims from the registry |
+| `claims version` | Print version information |
 
-Interactively render a claim template via the API.
+See the [README](https://github.com/stuttgart-things/claims#readme) for full flag documentation and examples.
 
-```bash
-claims render [flags]
-```
+### encrypt
 
-**Flags:**
-
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--api-url` | `-a` | API URL (default: `$CLAIM_API_URL` or `http://localhost:8080`) |
-| `--help` | `-h` | Help for render |
-
-**Examples:**
+Create SOPS-encrypted Kubernetes Secrets. See [09-encrypt.md](09-encrypt.md) for full details.
 
 ```bash
-# Use default API URL (localhost:8080)
-claims render
+# Interactive
+claims encrypt
 
-# Specify custom API URL
-claims render --api-url http://api.example.com:8080
-
-# Use environment variable
-export CLAIM_API_URL=http://api.example.com:8080
-claims render
+# Non-interactive
+claims encrypt --non-interactive \
+  --template my-secret-template \
+  --name app-secrets \
+  --namespace production \
+  --param db_password=secret123
 ```
 
-**Workflow:**
-
-1. Connects to the claim-machinery API
-2. Fetches and displays available templates
-3. Presents an interactive form for template selection
-4. Dynamically generates parameter input forms based on template spec
-5. Renders the claim via API
-6. Displays the rendered YAML output
-7. Optionally saves to a file
-
-### version
-
-Print version information.
-
-```bash
-claims version
-```
+**Prerequisites:** `sops` CLI + `SOPS_AGE_RECIPIENTS` env var.
 
 ## Configuration
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
 | `CLAIM_API_URL` | API base URL | `http://localhost:8080` |
+| `SOPS_AGE_RECIPIENTS` | age public key for SOPS encryption | - |
+| `GIT_USER` | Git username for push operations | - |
+| `GIT_TOKEN` | Git token/password for push operations | - |
+| `GITHUB_TOKEN` | GitHub token (fallback for `GIT_TOKEN`) | - |
 
 ## Development
 
@@ -109,16 +94,32 @@ claims version
 
 ```
 .
-├── main.go           # Application entry point
+├── main.go                       # Application entry point
 ├── cmd/
-│   ├── root.go       # Root command setup
-│   ├── render.go     # Render command implementation
-│   ├── version.go    # Version command
-│   └── logo.go       # ASCII logo rendering
-├── go.mod            # Go module definition
-├── Taskfile.yaml     # Task automation
-├── docs/             # Documentation (TechDocs)
-└── catalog-info.yaml # Backstage component
+│   ├── root.go                   # Root command setup
+│   ├── render.go                 # Render command and flags
+│   ├── render_interactive.go     # Interactive render flow
+│   ├── render_noninteractive.go  # Non-interactive render
+│   ├── render_git.go             # Git operations for render
+│   ├── encrypt.go                # Encrypt command and flags
+│   ├── encrypt_interactive.go    # Interactive encrypt flow (SOPS)
+│   ├── encrypt_noninteractive.go # Non-interactive encrypt
+│   ├── encrypt_git.go            # Git operations for encrypt
+│   ├── delete.go                 # Delete command and flags
+│   ├── list.go                   # List command
+│   ├── version.go                # Version command
+│   └── logo.go                   # ASCII logo rendering
+├── internal/
+│   ├── sops/                     # SOPS encryption + K8s Secret generation
+│   ├── templates/                # API client for claim-machinery
+│   ├── gitops/                   # Git operations (clone, commit, push, PR)
+│   ├── params/                   # Parameter file parsing
+│   ├── registry/                 # Registry.yaml CRUD
+│   └── kustomize/                # Kustomization.yaml operations
+├── go.mod                        # Go module definition
+├── Taskfile.yaml                 # Task automation
+├── docs/                         # Documentation (TechDocs)
+└── catalog-info.yaml             # Backstage component
 ```
 
 ## Contributing

@@ -59,5 +59,39 @@ claims render --non-interactive \
     --pr-labels "automated,infrastructure"
 
 echo ""
+echo "=== Encrypting Secrets ==="
+
+# Step 4 (optional): Encrypt secrets with SOPS
+# Requires: sops CLI installed and SOPS_AGE_RECIPIENTS set
+if command -v sops &> /dev/null && [ -n "$SOPS_AGE_RECIPIENTS" ]; then
+    SECRET_PARAMS="${3:-examples/encrypt-params.yaml}"
+    SECRET_NAME="${4:-app-secrets}"
+    SECRET_NAMESPACE="${5:-production}"
+    SECRETS_DIR="${OUTPUT_DIR}/secrets"
+
+    if [ -f "$SECRET_PARAMS" ]; then
+        echo "Encrypting secret: $SECRET_NAME in $SECRET_NAMESPACE"
+
+        claims encrypt --non-interactive \
+            --template my-secret-template \
+            --name "$SECRET_NAME" \
+            --namespace "$SECRET_NAMESPACE" \
+            -f "$SECRET_PARAMS" \
+            -o "$SECRETS_DIR" \
+            --git-create-branch \
+            --git-branch "${BRANCH_NAME}-secrets" \
+            --create-pr \
+            --pr-title "Add encrypted secret: ${SECRET_NAME} - $(date +%Y-%m-%d)" \
+            --pr-labels "automated,secrets"
+
+        echo "Encrypted secret PR created!"
+    else
+        echo "Skipping encryption: params file not found: $SECRET_PARAMS"
+    fi
+else
+    echo "Skipping encryption: sops not installed or SOPS_AGE_RECIPIENTS not set"
+fi
+
+echo ""
 echo "=== Done ==="
-echo "PR created successfully!"
+echo "Pipeline completed successfully!"

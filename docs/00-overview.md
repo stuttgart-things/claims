@@ -85,3 +85,4 @@ internal/
 6. [06-gitops.md](06-gitops.md) - Git integration
 7. [07-pullrequest.md](07-pullrequest.md) - PR creation
 8. [08-polish.md](08-polish.md) - Testing & documentation
+9. [09-encrypt.md](09-encrypt.md) - SOPS-encrypted Kubernetes Secrets
