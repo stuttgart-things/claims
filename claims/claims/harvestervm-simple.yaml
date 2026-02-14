@@ -25,7 +25,7 @@ spec:
     timezone: Europe/Berlin
     users:
     - name: ubuntu
-      sudo: ALL=(ALL) NOPASSWD:ALL
+      sudo: ALL=(ALL) NOPASSWD:ALL # pragma: allowlist secret
       groups: sudo
       shell: /bin/bash
     packages:
