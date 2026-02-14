@@ -150,6 +150,19 @@ func (g *GitOps) Commit(message, authorName, authorEmail string) error {
 	return nil
 }
 
+// GetRemoteURL returns the URL of the given remote (e.g. "origin")
+func (g *GitOps) GetRemoteURL(remoteName string) (string, error) {
+	remote, err := g.repo.Remote(remoteName)
+	if err != nil {
+		return "", err
+	}
+	urls := remote.Config().URLs
+	if len(urls) == 0 {
+		return "", fmt.Errorf("remote %q has no URLs", remoteName)
+	}
+	return urls[0], nil
+}
+
 // Push pushes a specific branch to remote
 func (g *GitOps) Push(remote, branch string) error {
 	if g.auth == nil {

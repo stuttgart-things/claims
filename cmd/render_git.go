@@ -173,6 +173,15 @@ func updateRegistryForRender(results []RenderResult, config *RenderConfig) {
 	if config.GitConfig != nil && config.GitConfig.RepoURL != "" {
 		repoName = config.GitConfig.RepoURL
 	}
+	if repoName == "" {
+		// Try to read remote URL from local repo
+		g, err := gitops.New(repoRoot, "", "")
+		if err == nil {
+			if url, err := g.GetRemoteURL("origin"); err == nil {
+				repoName = extractRepoSlug(url)
+			}
+		}
+	}
 
 	// Resolve git user for createdBy
 	createdBy := "cli"
@@ -182,7 +191,8 @@ func updateRegistryForRender(results []RenderResult, config *RenderConfig) {
 
 	// Compute category from output directory relative to claims/
 	category := ""
-	relOut, err := filepath.Rel(filepath.Join(repoRoot, "claims"), config.OutputDir)
+	absOutputDir, _ := filepath.Abs(config.OutputDir)
+	relOut, err := filepath.Rel(filepath.Join(repoRoot, "claims"), absOutputDir)
 	if err == nil && relOut != ".." && !strings.HasPrefix(relOut, "..") {
 		parts := strings.SplitN(relOut, string(filepath.Separator), 2)
 		if len(parts) > 0 && parts[0] != "." {
@@ -197,7 +207,8 @@ func updateRegistryForRender(results []RenderResult, config *RenderConfig) {
 		}
 
 		// Compute path relative to repo root
-		relPath, err := filepath.Rel(repoRoot, r.OutputPath)
+		absOutPath, _ := filepath.Abs(r.OutputPath)
+		relPath, err := filepath.Rel(repoRoot, absOutPath)
 		if err != nil {
 			relPath = r.OutputPath
 		}
@@ -210,7 +221,7 @@ func updateRegistryForRender(results []RenderResult, config *RenderConfig) {
 			CreatedBy:  createdBy,
 			Source:     "cli",
 			Repository: repoName,
-			Path:       filepath.Dir(relPath),
+			Path:       relPath,
 			Status:     "active",
 		}
 
@@ -248,4 +259,25 @@ func findRepoRoot(startPath string) (string, error) {
 		}
 		absPath = parent
 	}
+}
+
+// extractRepoSlug extracts "owner/repo" from a git remote URL.
+// Supports both HTTPS (https://github.com/owner/repo.git) and SSH (git@github.com:owner/repo.git).
+func extractRepoSlug(url string) string {
+	// Remove trailing .git
+	url = strings.TrimSuffix(url, ".git")
+
+	// SSH format: git@github.com:owner/repo
+	if idx := strings.Index(url, ":"); strings.Contains(url, "@") && idx > 0 {
+		slug := url[idx+1:]
+		return slug
+	}
+
+	// HTTPS format: https://github.com/owner/repo
+	parts := strings.Split(url, "/")
+	if len(parts) >= 2 {
+		return parts[len(parts)-2] + "/" + parts[len(parts)-1]
+	}
+
+	return url
 }
