@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -162,7 +164,7 @@ func updateRegistryForRender(results []RenderResult, config *RenderConfig) {
 	reg, err := registry.Load(registryPath)
 	if err != nil {
 		// Create new registry if file doesn't exist
-		if !os.IsNotExist(err) {
+		if !errors.Is(err, fs.ErrNotExist) {
 			return
 		}
 		reg = registry.NewRegistry()
