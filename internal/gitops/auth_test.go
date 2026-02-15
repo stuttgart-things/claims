@@ -1,23 +1,12 @@
 package gitops_test
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stuttgart-things/claims/internal/gitops"
 )
 
 func TestResolveCredentials(t *testing.T) {
-	// Save original env vars
-	origUser := os.Getenv("GIT_USER")
-	origToken := os.Getenv("GIT_TOKEN")
-	origGitHub := os.Getenv("GITHUB_TOKEN")
-	defer func() {
-		os.Setenv("GIT_USER", origUser)
-		os.Setenv("GIT_TOKEN", origToken)
-		os.Setenv("GITHUB_TOKEN", origGitHub)
-	}()
-
 	tests := []struct {
 		name      string
 		user      string
@@ -95,20 +84,21 @@ func TestResolveCredentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear env vars
-			os.Unsetenv("GIT_USER")
-			os.Unsetenv("GIT_TOKEN")
-			os.Unsetenv("GITHUB_TOKEN")
+			// Isolate from host environment; t.Setenv restores after each subtest
+			t.Setenv("GIT_USER", "")
+			t.Setenv("GIT_TOKEN", "")
+			t.Setenv("GITHUB_USER", "")
+			t.Setenv("GITHUB_TOKEN", "")
 
 			// Set test env vars if specified
 			if tt.envUser != "" {
-				os.Setenv("GIT_USER", tt.envUser)
+				t.Setenv("GIT_USER", tt.envUser)
 			}
 			if tt.envToken != "" {
-				os.Setenv("GIT_TOKEN", tt.envToken)
+				t.Setenv("GIT_TOKEN", tt.envToken)
 			}
 			if tt.envGitHub != "" {
-				os.Setenv("GITHUB_TOKEN", tt.envGitHub)
+				t.Setenv("GITHUB_TOKEN", tt.envGitHub)
 			}
 
 			user, token, err := gitops.ResolveCredentials(tt.user, tt.token)
@@ -130,16 +120,6 @@ func TestResolveCredentials(t *testing.T) {
 }
 
 func TestResolveCredentialsOptional(t *testing.T) {
-	// Save original env vars
-	origUser := os.Getenv("GIT_USER")
-	origToken := os.Getenv("GIT_TOKEN")
-	origGitHub := os.Getenv("GITHUB_TOKEN")
-	defer func() {
-		os.Setenv("GIT_USER", origUser)
-		os.Setenv("GIT_TOKEN", origToken)
-		os.Setenv("GITHUB_TOKEN", origGitHub)
-	}()
-
 	tests := []struct {
 		name      string
 		user      string
@@ -202,20 +182,21 @@ func TestResolveCredentialsOptional(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear env vars
-			os.Unsetenv("GIT_USER")
-			os.Unsetenv("GIT_TOKEN")
-			os.Unsetenv("GITHUB_TOKEN")
+			// Isolate from host environment; t.Setenv restores after each subtest
+			t.Setenv("GIT_USER", "")
+			t.Setenv("GIT_TOKEN", "")
+			t.Setenv("GITHUB_USER", "")
+			t.Setenv("GITHUB_TOKEN", "")
 
 			// Set test env vars if specified
 			if tt.envUser != "" {
-				os.Setenv("GIT_USER", tt.envUser)
+				t.Setenv("GIT_USER", tt.envUser)
 			}
 			if tt.envToken != "" {
-				os.Setenv("GIT_TOKEN", tt.envToken)
+				t.Setenv("GIT_TOKEN", tt.envToken)
 			}
 			if tt.envGitHub != "" {
-				os.Setenv("GITHUB_TOKEN", tt.envGitHub)
+				t.Setenv("GITHUB_TOKEN", tt.envGitHub)
 			}
 
 			user, token := gitops.ResolveCredentialsOptional(tt.user, tt.token)
