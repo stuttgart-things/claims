@@ -26,6 +26,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.5"
+
+      - name: Set up Ko
+        uses: ko-build/setup-ko@v0.9
+
       - name: Set image repository
         id: image-repo
         run: |
@@ -38,19 +46,16 @@ jobs:
             echo "tag=latest" >> $GITHUB_OUTPUT
           fi
 
+      - name: Login to GHCR
+        if: github.ref == 'refs/heads/main'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | ko login ghcr.io -u ${{ github.actor }} --password-stdin
+
       - name: Build and push image
-        uses: dagger/dagger-for-github@v8.3.0
-        with:
-          module: github.com/stuttgart-things/dagger/go@v0.82.1
-          call: >-
-            ko-build
-            --src .
-            --repo "${{ steps.image-repo.outputs.repo }}:${{ steps.image-repo.outputs.tag }}"
-            --token env:GITHUB_TOKEN
-            --push="true"
-          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        run: |
+          ko build --bare --tags=${{ steps.image-repo.outputs.tag }} . \
+            --platform=linux/amd64,linux/arm64
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KO_DOCKER_REPO: ${{ steps.image-repo.outputs.repo }}
 
       - name: Image Summary
         run: |
