@@ -1,0 +1,120 @@
+---
+name: Deploy Pages
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build-docs
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install mkdocs-material
+        run: pip install mkdocs-material
+
+      - name: Generate release history
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            {
+              echo "# Release History"
+              echo ""
+              echo "Auto-generated from [CHANGELOG.md](https://github.com/stuttgart-things/claims/blob/main/CHANGELOG.md)."
+              echo ""
+              sed -E 's/^(#+) /\1# /' CHANGELOG.md
+            } > docs/releases.md
+          fi
+
+      - name: Convert techdocs config to material theme
+        run: |
+          python3 -c "
+          import yaml
+
+          with open('mkdocs.yml') as f:
+              config = yaml.safe_load(f)
+
+          config.pop('plugins', None)
+          config['theme'] = {
+              'name': 'material',
+              'palette': [
+                  {
+                      'scheme': 'default',
+                      'primary': 'indigo',
+                      'accent': 'indigo',
+                      'toggle': {
+                          'icon': 'material/brightness-7',
+                          'name': 'Switch to dark mode',
+                      },
+                  },
+                  {
+                      'scheme': 'slate',
+                      'primary': 'indigo',
+                      'accent': 'indigo',
+                      'toggle': {
+                          'icon': 'material/brightness-4',
+                          'name': 'Switch to light mode',
+                      },
+                  },
+              ],
+              'features': [
+                  'navigation.tabs',
+                  'navigation.sections',
+                  'navigation.top',
+                  'search.highlight',
+                  'content.code.copy',
+              ],
+          }
+          config['plugins'] = ['search']
+
+          import os
+          if os.path.exists('docs/releases.md'):
+              if 'nav' not in config:
+                  config['nav'] = []
+              config['nav'].append({'Release History': 'releases.md'})
+
+          with open('mkdocs-pages.yml', 'w') as f:
+              yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+          "
+
+      - name: Build docs
+        run: mkdocs build -f mkdocs-pages.yml -d public
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    name: deploy-pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

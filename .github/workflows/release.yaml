@@ -1,0 +1,87 @@
+---
+name: Release
+on:
+  workflow_run:
+    workflows: ["Build, Push & Scan Container Image"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Get version before release
+        id: version-before
+        run: |
+          git fetch --tags
+          VERSION=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "none")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Current version: ${VERSION}"
+
+      - name: Run semantic-release
+        uses: dagger/dagger-for-github@v8.3.0
+        with:
+          module: github.com/stuttgart-things/dagger/release@v0.82.1
+          call: >-
+            semantic
+            --src .
+            --token env:GITHUB_TOKEN
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get new version
+        id: version-after
+        run: |
+          git fetch --tags
+          VERSION=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "none")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          if [ "${VERSION}" != "${{ steps.version-before.outputs.version }}" ]; then
+            echo "new_release=true" >> $GITHUB_OUTPUT
+            echo "New release detected: ${VERSION}"
+          else
+            echo "new_release=false" >> $GITHUB_OUTPUT
+            echo "No new release"
+          fi
+
+      - name: Stage container image
+        if: steps.version-after.outputs.new_release == 'true'
+        uses: imjasonh/setup-crane@v0.4
+      - name: Copy image to versioned tag
+        if: steps.version-after.outputs.new_release == 'true'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | crane auth login ghcr.io -u ${{ github.actor }} --password-stdin
+          crane copy \
+            ghcr.io/${{ github.repository }}:main \
+            ghcr.io/${{ github.repository }}:${{ steps.version-after.outputs.version }}
+          echo "Staged image: ghcr.io/${{ github.repository }}:${{ steps.version-after.outputs.version }}"
+
+      - name: Run GoReleaser
+        if: steps.version-after.outputs.new_release == 'true'
+        uses: dagger/dagger-for-github@v8.3.0
+        with:
+          module: github.com/stuttgart-things/dagger/go@v0.82.1
+          call: >-
+            release
+            --src .
+            --token env:GITHUB_TOKEN
+            --releaser-version v2.13.3
+            export --path=/tmp/goreleaser.log
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
