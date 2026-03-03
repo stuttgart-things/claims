@@ -1,3 +1,18 @@
+# [0.7.0](https://github.com/stuttgart-things/claims/compare/v0.6.0...v0.7.0) (2026-03-03)
+
+
+### Bug Fixes
+
+* **deps:** revert lipgloss to v1 and add CLAUDE.md ([b8737d3](https://github.com/stuttgart-things/claims/commit/b8737d3667aed4497f6e007aa8836c489b33505d))
+* **deps:** update module github.com/charmbracelet/lipgloss to v2 ([#62](https://github.com/stuttgart-things/claims/issues/62)) ([bc4a799](https://github.com/stuttgart-things/claims/commit/bc4a79933584f0cc636c9108eb5f899f892ce2a7))
+* **deps:** update module github.com/go-git/go-git/v5 to v5.17.0 ([#63](https://github.com/stuttgart-things/claims/issues/63)) ([89987ea](https://github.com/stuttgart-things/claims/commit/89987ead1275fb4d72df6b48fd83efe4f43c02e0))
+* use setup-go + ko directly for container build ([ae9edb7](https://github.com/stuttgart-things/claims/commit/ae9edb7cadfc166672d923e047d2cf607ca0c615))
+
+
+### Features
+
+* add release, pages, and container image build workflows ([30ebc81](https://github.com/stuttgart-things/claims/commit/30ebc816a173c4beea0fe3366d03e8c628ff0141))
+
 # [0.6.0](https://github.com/stuttgart-things/claims/compare/v0.5.0...v0.6.0) (2026-02-14)
 
 
