@@ -83,7 +83,7 @@ jobs:
 
       - name: Run GoReleaser
         if: steps.version-after.outputs.new_release == 'true'
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: v2.13.3
