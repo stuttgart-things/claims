@@ -2,6 +2,12 @@
 
 Terminal-based CLI for rendering claims via the claim-machinery API.
 
+| | |
+|---|---|
+| **Docs** | [stuttgart-things.github.io/claims](https://stuttgart-things.github.io/claims/) |
+| **Releases** | [GitHub Releases](https://github.com/stuttgart-things/claims/releases) |
+| **Container** | `ghcr.io/stuttgart-things/claims` |
+
 <details>
 <summary><strong>DEV</strong></summary>
 
