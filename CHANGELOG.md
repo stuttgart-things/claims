@@ -1,3 +1,10 @@
+## [0.7.2](https://github.com/stuttgart-things/claims/compare/v0.7.1...v0.7.2) (2026-03-03)
+
+
+### Bug Fixes
+
+* sync local checkout after semantic-release before GoReleaser ([0f6dcc3](https://github.com/stuttgart-things/claims/commit/0f6dcc3cfe36eece466e58d9e27bb5e885e754f5))
+
 ## [0.7.1](https://github.com/stuttgart-things/claims/compare/v0.7.0...v0.7.1) (2026-03-03)
 
 
