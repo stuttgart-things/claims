@@ -14,61 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-scan-push:
-    name: Build, Scan & Push Image
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.5"
-
-      - name: Set up Ko
-        uses: ko-build/setup-ko@v0.9
-
-      - name: Set image repository
-        id: image-repo
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" && ("${{ github.event_name }}" == "push" || "${{ github.event_name }}" == "workflow_dispatch") ]]; then
-            echo "repo=ghcr.io/${{ github.repository }}" >> $GITHUB_OUTPUT
-            echo "tag=main" >> $GITHUB_OUTPUT
-          else
-            RANDOM_TAG=$(openssl rand -hex 6)
-            echo "repo=ttl.sh/claims-${RANDOM_TAG}" >> $GITHUB_OUTPUT
-            echo "tag=latest" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Login to GHCR
-        if: github.ref == 'refs/heads/main'
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | ko login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Build and push image
-        run: |
-          ko build --bare --tags=${{ steps.image-repo.outputs.tag }} . \
-            --platform=linux/amd64,linux/arm64
-        env:
-          KO_DOCKER_REPO: ${{ steps.image-repo.outputs.repo }}
-
-      - name: Image Summary
-        run: |
-          echo "## Container Image Build Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ steps.image-repo.outputs.repo }}:${{ steps.image-repo.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Pull command:**" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ steps.image-repo.outputs.repo }}:${{ steps.image-repo.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [[ "${{ steps.image-repo.outputs.repo }}" == ttl.sh/* ]]; then
-            echo "**Note:** ttl.sh images expire after 1 hour" >> $GITHUB_STEP_SUMMARY
-          fi
+  build:
+    uses: stuttgart-things/github-workflow-templates/.github/workflows/call-ko-build.yaml@main
+    with:
+      runs-on: ubuntu-latest
+    secrets: inherit
