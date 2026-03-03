@@ -61,7 +61,7 @@ jobs:
 
       - name: Stage container image
         if: steps.version-after.outputs.new_release == 'true'
-        uses: imjasonh/setup-crane@v0.4
+        uses: imjasonh/setup-crane@v0.5
       - name: Copy image to versioned tag
         if: steps.version-after.outputs.new_release == 'true'
         run: |
