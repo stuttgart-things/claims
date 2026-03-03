@@ -1,3 +1,10 @@
+## [0.7.1](https://github.com/stuttgart-things/claims/compare/v0.7.0...v0.7.1) (2026-03-03)
+
+
+### Bug Fixes
+
+* use goreleaser-action directly for binary release ([c1d8d2d](https://github.com/stuttgart-things/claims/commit/c1d8d2d5112f79392c95595997a11f028287e9b5))
+
 # [0.7.0](https://github.com/stuttgart-things/claims/compare/v0.6.0...v0.7.0) (2026-03-03)
 
 
