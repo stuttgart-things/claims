@@ -1,3 +1,10 @@
+# [0.8.0](https://github.com/stuttgart-things/claims/compare/v0.7.2...v0.8.0) (2026-03-13)
+
+
+### Features
+
+* support secrets[] in render for combined render + encrypt workflow ([aba9267](https://github.com/stuttgart-things/claims/commit/aba92677e1fbcf49d44358a040b9183cd9fc1495)), closes [#71](https://github.com/stuttgart-things/claims/issues/71)
+
 ## [0.7.2](https://github.com/stuttgart-things/claims/compare/v0.7.1...v0.7.2) (2026-03-03)
 
 
