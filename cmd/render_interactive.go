@@ -39,6 +39,7 @@ var (
 type TemplateParams struct {
 	TemplateName string
 	Params       map[string]any
+	SecretValues map[string]string // collected secret values (interactive mode)
 }
 
 // runInteractive runs the render command in interactive mode
@@ -83,10 +84,51 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 
 	fmt.Printf("\nSelected %d template(s): %v\n", len(selectedNames), selectedNames)
 
+	// Show upfront resource info for templates with secrets
+	if !config.SkipSecrets {
+		for _, name := range selectedNames {
+			tmpl := templateMap[name]
+			if len(tmpl.Spec.Secrets) > 0 {
+				secretNames := make([]string, len(tmpl.Spec.Secrets))
+				for i, s := range tmpl.Spec.Secrets {
+					secretNames[i] = s.Name
+				}
+				fmt.Printf("\n%s\n", progressStyle.Render(
+					fmt.Sprintf("Note: %s will render %d resources:", tmpl.Metadata.Title, 1+len(tmpl.Spec.Secrets)),
+				))
+				fmt.Printf("  1. %s (rendered via API)\n", tmpl.Spec.Type)
+				for i, sn := range secretNames {
+					fmt.Printf("  %d. Encrypted Secret: %s (encrypted locally with SOPS)\n", i+2, sn)
+				}
+			}
+		}
+	}
+
 	// Collect parameters for each selected template
 	allParams, err := collectAllParams(selectedNames, templateMap)
 	if err != nil {
 		return fmt.Errorf("collecting parameters: %w", err)
+	}
+
+	// Collect secret values right after params (before rendering)
+	if !config.SkipSecrets {
+		for i, tp := range allParams {
+			tmpl := templateMap[tp.TemplateName]
+			if tmpl == nil || len(tmpl.Spec.Secrets) == 0 {
+				continue
+			}
+
+			fmt.Printf("\n%s\n", progressStyle.Render(
+				fmt.Sprintf("━━━ Secret values for: %s ━━━", tmpl.Metadata.Title),
+			))
+			fmt.Println("Values are encrypted locally with SOPS and never sent to the API.")
+
+			secretValues, err := collectInteractiveSecrets(tmpl, tp.Params)
+			if err != nil {
+				return fmt.Errorf("collecting secrets for %s: %w", tp.TemplateName, err)
+			}
+			allParams[i].SecretValues = secretValues
+		}
 	}
 
 	// Confirm before rendering
@@ -253,7 +295,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 		return fmt.Errorf("writing output: %w", err)
 	}
 
-	// Process secrets for templates that define them
+	// Process secrets using values collected earlier
 	config.OutputDir = outputConfig.Directory
 	for _, r := range results {
 		if r.Error != nil {
@@ -264,21 +306,22 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			continue
 		}
 
-		fmt.Printf("\n%s\n", progressStyle.Render(
-			fmt.Sprintf("━━━ Secrets for: %s ━━━", tmpl.Metadata.Title),
-		))
-		fmt.Println("This template defines encrypted secrets. Values are encrypted locally with SOPS.")
-
-		// Collect secret values interactively
-		secretValues, err := collectInteractiveSecrets(tmpl, r.Params)
-		if err != nil {
-			fmt.Printf("%s\n", errorStyle.Render(fmt.Sprintf("Secret collection failed: %v", err)))
-			continue
+		// Find the matching allParams entry to get pre-collected secret values
+		var secretValues map[string]string
+		for _, tp := range allParams {
+			if tp.TemplateName == r.TemplateName {
+				secretValues = tp.SecretValues
+				break
+			}
 		}
 
 		if len(secretValues) == 0 {
 			continue
 		}
+
+		fmt.Printf("\n%s\n", progressStyle.Render(
+			fmt.Sprintf("━━━ Encrypting secrets for: %s ━━━", tmpl.Metadata.Title),
+		))
 
 		secretResults, err := processTemplateSecrets(tmpl, r.Params, secretValues, config)
 		if err != nil {
@@ -289,6 +332,17 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 		for _, sr := range secretResults {
 			if sr.Error != nil {
 				fmt.Printf("%s\n", errorStyle.Render(fmt.Sprintf("  Secret error (%s): %v", sr.SecretName, sr.Error)))
+			} else if config.CombineSecrets && r.OutputPath != "" && !outputConfig.DryRun {
+				// Append encrypted secret to the rendered output file
+				if err := appendToFile(r.OutputPath, sr.Content); err != nil {
+					fmt.Printf("%s\n", errorStyle.Render(fmt.Sprintf("  Failed to combine: %v", err)))
+				} else {
+					fmt.Printf("%s\n", successStyle.Render(fmt.Sprintf("  Appended encrypted secret to: %s", r.OutputPath)))
+					// Remove the separate secret file if it was written
+					if sr.OutputPath != "" && sr.OutputPath != r.OutputPath {
+						os.Remove(sr.OutputPath)
+					}
+				}
 			} else {
 				fmt.Printf("%s\n", successStyle.Render(fmt.Sprintf("  Encrypted secret: %s", sr.OutputPath)))
 			}

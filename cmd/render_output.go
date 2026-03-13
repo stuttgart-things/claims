@@ -166,6 +166,20 @@ func printDryRun(results []RenderResult, config OutputConfig) error {
 	return nil
 }
 
+// appendToFile appends content to an existing file with a YAML document separator
+func appendToFile(path string, content string) error {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("opening file for append: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString("\n---\n" + strings.TrimSpace(content) + "\n"); err != nil {
+		return fmt.Errorf("appending to file: %w", err)
+	}
+	return nil
+}
+
 // WriteSingleResult writes a single render result using the output configuration
 // This is a convenience function for backward compatibility with single-template rendering
 func WriteSingleResult(templateName, resourceName, content string, config OutputConfig) error {

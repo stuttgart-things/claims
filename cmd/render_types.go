@@ -16,6 +16,7 @@ type RenderConfig struct {
 	// Secret input
 	InlineSecretsRaw []string
 	SkipSecrets      bool
+	CombineSecrets   bool
 
 	// Output configuration
 	OutputDir       string

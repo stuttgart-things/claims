@@ -342,6 +342,40 @@ func TestWriteSingleResult(t *testing.T) {
 	}
 }
 
+func TestAppendToFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create initial file
+	filePath := filepath.Join(tmpDir, "test.yaml")
+	initialContent := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: test"
+	if err := os.WriteFile(filePath, []byte(initialContent), 0644); err != nil {
+		t.Fatalf("failed to write initial file: %v", err)
+	}
+
+	// Append secret content
+	secretContent := "apiVersion: v1\nkind: Secret\nmetadata:\n  name: my-secret"
+	if err := appendToFile(filePath, secretContent); err != nil {
+		t.Fatalf("appendToFile failed: %v", err)
+	}
+
+	// Verify combined content
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read file: %v", err)
+	}
+
+	got := string(content)
+	if !strings.Contains(got, "ConfigMap") {
+		t.Error("should contain original content")
+	}
+	if !strings.Contains(got, "---") {
+		t.Error("should contain YAML separator")
+	}
+	if !strings.Contains(got, "my-secret") {
+		t.Error("should contain appended secret")
+	}
+}
+
 // testError is a simple error type for testing
 type testError struct{}
 
