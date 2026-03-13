@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/stuttgart-things/claims/internal/params"
 	"github.com/stuttgart-things/claims/internal/templates"
@@ -150,6 +151,23 @@ func runNonInteractive(config *RenderConfig) error {
 			if sr.Error != nil {
 				fmt.Printf("  Secret error (%s): %v\n", sr.SecretName, sr.Error)
 				hasErrors = true
+			} else if config.CombineSecrets && !config.DryRun {
+				// Find the matching render result to get the output path
+				for _, r := range results {
+					if r.TemplateName == tp.Name && r.OutputPath != "" {
+						if err := appendToFile(r.OutputPath, sr.Content); err != nil {
+							fmt.Printf("  Failed to combine secret: %v\n", err)
+							hasErrors = true
+						} else {
+							fmt.Printf("  Appended encrypted secret to: %s\n", r.OutputPath)
+							// Remove the separate secret file
+							if sr.OutputPath != "" && sr.OutputPath != r.OutputPath {
+								os.Remove(sr.OutputPath)
+							}
+						}
+						break
+					}
+				}
 			}
 		}
 	}

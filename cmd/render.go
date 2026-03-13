@@ -21,6 +21,7 @@ var (
 	inlineParams   []string
 	inlineSecrets  []string
 	skipSecrets    bool
+	combineSecrets bool
 	interactive    bool
 	nonInteractive bool
 
@@ -63,6 +64,7 @@ func init() {
 	renderCmd.Flags().StringSliceVarP(&inlineParams, "param", "p", nil, "Inline param (key=value, repeatable)")
 	renderCmd.Flags().StringSliceVarP(&inlineSecrets, "secret", "s", nil, "Secret param (key=value, repeatable)")
 	renderCmd.Flags().BoolVar(&skipSecrets, "skip-secrets", false, "Skip secret generation even if template defines them")
+	renderCmd.Flags().BoolVar(&combineSecrets, "combine-secrets", false, "Save encrypted secrets in the same file as rendered output (--- separated)")
 	renderCmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Force interactive mode")
 	renderCmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Force non-interactive mode")
 
@@ -106,6 +108,7 @@ func runRender(cmd *cobra.Command, args []string) {
 		InlineParamsRaw:  inlineParams,
 		InlineSecretsRaw: inlineSecrets,
 		SkipSecrets:      skipSecrets,
+		CombineSecrets:   combineSecrets,
 		OutputDir:        outputDir,
 		FilenamePattern:  filenamePattern,
 		SingleFile:       singleFile,
