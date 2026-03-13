@@ -253,9 +253,50 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 		return fmt.Errorf("writing output: %w", err)
 	}
 
+	// Process secrets for templates that define them
+	config.OutputDir = outputConfig.Directory
+	for _, r := range results {
+		if r.Error != nil {
+			continue
+		}
+		tmpl := templateMap[r.TemplateName]
+		if tmpl == nil || len(tmpl.Spec.Secrets) == 0 || config.SkipSecrets {
+			continue
+		}
+
+		fmt.Printf("\n%s\n", progressStyle.Render(
+			fmt.Sprintf("━━━ Secrets for: %s ━━━", tmpl.Metadata.Title),
+		))
+		fmt.Println("This template defines encrypted secrets. Values are encrypted locally with SOPS.")
+
+		// Collect secret values interactively
+		secretValues, err := collectInteractiveSecrets(tmpl, r.Params)
+		if err != nil {
+			fmt.Printf("%s\n", errorStyle.Render(fmt.Sprintf("Secret collection failed: %v", err)))
+			continue
+		}
+
+		if len(secretValues) == 0 {
+			continue
+		}
+
+		secretResults, err := processTemplateSecrets(tmpl, r.Params, secretValues, config)
+		if err != nil {
+			fmt.Printf("%s\n", errorStyle.Render(fmt.Sprintf("Secret processing failed: %v", err)))
+			continue
+		}
+
+		for _, sr := range secretResults {
+			if sr.Error != nil {
+				fmt.Printf("%s\n", errorStyle.Render(fmt.Sprintf("  Secret error (%s): %v", sr.SecretName, sr.Error)))
+			} else {
+				fmt.Printf("%s\n", successStyle.Render(fmt.Sprintf("  Encrypted secret: %s", sr.OutputPath)))
+			}
+		}
+	}
+
 	// Update registry if output was written (and not dry-run)
 	if !outputConfig.DryRun {
-		config.OutputDir = outputConfig.Directory
 		updateRegistryForRender(results, config)
 	}
 

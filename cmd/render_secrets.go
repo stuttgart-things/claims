@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"text/template"
 
+	"github.com/charmbracelet/huh"
 	"github.com/stuttgart-things/claims/internal/params"
 	"github.com/stuttgart-things/claims/internal/sops"
 	"github.com/stuttgart-things/claims/internal/templates"
@@ -160,6 +161,59 @@ func processTemplateSecrets(
 	}
 
 	return results, nil
+}
+
+// collectInteractiveSecrets prompts the user for secret values using huh forms
+func collectInteractiveSecrets(tmpl *templates.ClaimTemplate, renderParams map[string]any) (map[string]string, error) {
+	secretValues := make(map[string]string)
+
+	for _, secretDef := range tmpl.Spec.Secrets {
+		// Resolve secret name for display
+		secretName, _ := resolveTemplateName(secretDef.Name, renderParams)
+		if secretName == "" {
+			secretName = secretDef.Name
+		}
+
+		fmt.Printf("\nSecret: %s\n", secretName)
+
+		for _, param := range secretDef.Parameters {
+			var value string
+
+			title := param.Title
+			if title == "" {
+				title = param.Name
+			}
+			if param.Required {
+				title += " *"
+			}
+
+			field := huh.NewInput().
+				Title(title).
+				Description(param.Description).
+				EchoMode(huh.EchoModePassword).
+				Value(&value)
+
+			if param.Required {
+				field = field.Validate(func(s string) error {
+					if s == "" {
+						return fmt.Errorf("%s is required", param.Name)
+					}
+					return nil
+				})
+			}
+
+			form := huh.NewForm(huh.NewGroup(field))
+			if err := form.Run(); err != nil {
+				return nil, err
+			}
+
+			if value != "" {
+				secretValues[param.Name] = value
+			}
+		}
+	}
+
+	return secretValues, nil
 }
 
 // mergeSecretValues merges secret values from params file and inline --secret flags
