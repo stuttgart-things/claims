@@ -18,10 +18,19 @@ type ClaimTemplateMetadata struct {
 
 // ClaimTemplateSpec contains template specification
 type ClaimTemplateSpec struct {
-	Type       string      `json:"type"`
-	Source     string      `json:"source"`
-	Tag        string      `json:"tag,omitempty"`
-	Parameters []Parameter `json:"parameters"`
+	Type       string           `json:"type"`
+	Source     string           `json:"source"`
+	Tag        string           `json:"tag,omitempty"`
+	Parameters []Parameter      `json:"parameters"`
+	Secrets    []SecretTemplate `json:"secrets,omitempty"`
+}
+
+// SecretTemplate defines a Kubernetes Secret that accompanies the rendered template.
+// Secret values are collected and encrypted client-side (SOPS/age) — they never pass through the API.
+type SecretTemplate struct {
+	Name       string      `json:"name"`       // supports Go template expressions e.g. "{{.secretName}}"
+	Namespace  string      `json:"namespace"`   // supports Go template expressions
+	Parameters []Parameter `json:"parameters"` // secret key definitions
 }
 
 // Parameter defines a template parameter

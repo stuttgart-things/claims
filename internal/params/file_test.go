@@ -232,6 +232,41 @@ func TestParameterFile_Normalize(t *testing.T) {
 	}
 }
 
+func TestParseFile_WithSecrets(t *testing.T) {
+	content := `template: clusterbook
+parameters:
+  CLUSTERBOOK_NAMESPACE: clusterbook
+  secretName: clusterbook-pdns-vars
+  secretNamespace: flux-system
+secrets:
+  PDNS_TOKEN: my-secret-token
+  API_KEY: abc-def
+`
+	tmpFile := createTempFile(t, "params-secrets.yaml", content)
+	defer os.Remove(tmpFile)
+
+	pf, err := ParseFile(tmpFile)
+	if err != nil {
+		t.Fatalf("ParseFile() error = %v", err)
+	}
+
+	if len(pf.Templates) != 1 {
+		t.Fatalf("expected 1 template, got %d", len(pf.Templates))
+	}
+
+	// Secrets should be propagated to template
+	tp := pf.Templates[0]
+	if tp.Secrets == nil {
+		t.Fatal("expected secrets to be propagated to template")
+	}
+	if tp.Secrets["PDNS_TOKEN"] != "my-secret-token" {
+		t.Errorf("expected PDNS_TOKEN='my-secret-token', got '%s'", tp.Secrets["PDNS_TOKEN"])
+	}
+	if tp.Secrets["API_KEY"] != "abc-def" {
+		t.Errorf("expected API_KEY='abc-def', got '%s'", tp.Secrets["API_KEY"])
+	}
+}
+
 func TestParameterFile_Normalize_NoOp(t *testing.T) {
 	// Already in multi-template format - normalize should be a no-op
 	pf := &ParameterFile{

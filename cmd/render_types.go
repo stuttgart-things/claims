@@ -13,6 +13,10 @@ type RenderConfig struct {
 	InlineParams    map[string]string
 	InlineParamsRaw []string
 
+	// Secret input
+	InlineSecretsRaw []string
+	SkipSecrets      bool
+
 	// Output configuration
 	OutputDir       string
 	FilenamePattern string

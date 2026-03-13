@@ -59,17 +59,17 @@ func runNonInteractive(config *RenderConfig) error {
 		}
 	}
 
-	// Validate templates exist
+	// Validate templates exist and build lookup map
 	available, err := client.FetchTemplates()
 	if err != nil {
 		return fmt.Errorf("fetching templates: %w", err)
 	}
-	templateMap := make(map[string]bool)
-	for _, t := range available {
-		templateMap[t.Metadata.Name] = true
+	templateLookup := make(map[string]*templates.ClaimTemplate)
+	for i, t := range available {
+		templateLookup[t.Metadata.Name] = &available[i]
 	}
 	for _, tp := range templateParams {
-		if !templateMap[tp.Name] {
+		if templateLookup[tp.Name] == nil {
 			return fmt.Errorf("template not found: %s", tp.Name)
 		}
 	}
@@ -121,6 +121,37 @@ func runNonInteractive(config *RenderConfig) error {
 
 	if err := WriteResults(results, outputConfig); err != nil {
 		return err
+	}
+
+	// Process secrets for templates that define them
+	for _, tp := range templateParams {
+		tmpl := templateLookup[tp.Name]
+		if tmpl == nil || len(tmpl.Spec.Secrets) == 0 {
+			continue
+		}
+
+		// Collect secret values from file and inline flags
+		secretValues, err := mergeSecretValues(tp.Secrets, config.InlineSecretsRaw)
+		if err != nil {
+			return fmt.Errorf("collecting secret values: %w", err)
+		}
+
+		if len(secretValues) == 0 && !config.SkipSecrets {
+			fmt.Printf("Template %s defines secrets but no secret values provided (use --secret or secrets: in params file)\n", tp.Name)
+			continue
+		}
+
+		secretResults, err := processTemplateSecrets(tmpl, tp.Parameters, secretValues, config)
+		if err != nil {
+			return fmt.Errorf("processing secrets for %s: %w", tp.Name, err)
+		}
+
+		for _, sr := range secretResults {
+			if sr.Error != nil {
+				fmt.Printf("  Secret error (%s): %v\n", sr.SecretName, sr.Error)
+				hasErrors = true
+			}
+		}
 	}
 
 	// Update registry if output was written (and not dry-run)
