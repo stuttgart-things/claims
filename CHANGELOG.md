@@ -1,3 +1,10 @@
+# [0.9.0](https://github.com/stuttgart-things/claims/compare/v0.8.0...v0.9.0) (2026-03-13)
+
+
+### Features
+
+* add interactive secret collection to render flow ([c126633](https://github.com/stuttgart-things/claims/commit/c126633a160cc6c2cf82d58a55b86f4be4678ec9))
+
 # [0.8.0](https://github.com/stuttgart-things/claims/compare/v0.7.2...v0.8.0) (2026-03-13)
 
 
