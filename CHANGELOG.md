@@ -1,3 +1,10 @@
+# [0.10.0](https://github.com/stuttgart-things/claims/compare/v0.9.0...v0.10.0) (2026-03-13)
+
+
+### Features
+
+* improve render secrets UX with upfront info, early collection, and combine option ([283117d](https://github.com/stuttgart-things/claims/commit/283117dc18d2bb39cfa3c4e4f2a12ebcf89d7eb3))
+
 # [0.9.0](https://github.com/stuttgart-things/claims/compare/v0.8.0...v0.9.0) (2026-03-13)
 
 
