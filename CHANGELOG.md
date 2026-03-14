@@ -1,3 +1,10 @@
+# [0.11.0](https://github.com/stuttgart-things/claims/compare/v0.10.0...v0.11.0) (2026-03-14)
+
+
+### Features
+
+* add valueFrom support to Parameter type ([97b14bc](https://github.com/stuttgart-things/claims/commit/97b14bc7b53d5866ab7ecdd2f44763a58c50ee7a))
+
 # [0.10.0](https://github.com/stuttgart-things/claims/compare/v0.9.0...v0.10.0) (2026-03-13)
 
 
