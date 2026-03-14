@@ -996,8 +996,8 @@ func collectTemplateParams(tmpl *templates.ClaimTemplate) (map[string]any, error
 			paramValues[p.Name] = &defaultVal
 		}
 
-		// Skip hidden parameters
-		if p.Hidden {
+		// Skip hidden parameters and valueFrom parameters (resolved server-side)
+		if p.Hidden || p.ValueFrom != nil {
 			continue
 		}
 

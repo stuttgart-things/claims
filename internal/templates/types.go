@@ -33,6 +33,13 @@ type SecretTemplate struct {
 	Parameters []Parameter `json:"parameters"` // secret key definitions
 }
 
+// ValueFromSpec references a profile function to dynamically resolve a parameter value.
+type ValueFromSpec struct {
+	Function  string            `json:"function"`
+	Args      map[string]string `json:"args"`
+	Condition string            `json:"condition,omitempty"`
+}
+
 // Parameter defines a template parameter
 type Parameter struct {
 	Name        string      `json:"name"`
@@ -46,6 +53,7 @@ type Parameter struct {
 	Hidden      bool        `json:"hidden,omitempty"`
 	AllowRandom bool        `json:"allowRandom,omitempty"`
 	Multiselect bool        `json:"multiselect,omitempty"`
+	ValueFrom   *ValueFromSpec `json:"valueFrom,omitempty"`
 }
 
 // ClaimTemplateList is a list of claim templates
