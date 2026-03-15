@@ -1,3 +1,10 @@
+## [0.12.1](https://github.com/stuttgart-things/claims/compare/v0.12.0...v0.12.1) (2026-03-15)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/charmbracelet/bubbletea to v1.3.10 ([#76](https://github.com/stuttgart-things/claims/issues/76)) ([a453fa6](https://github.com/stuttgart-things/claims/commit/a453fa62e91a28c3987afdaa348236a6cd87fa1c))
+
 # [0.12.0](https://github.com/stuttgart-things/claims/compare/v0.11.0...v0.12.0) (2026-03-15)
 
 
