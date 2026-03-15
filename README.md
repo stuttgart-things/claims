@@ -118,6 +118,14 @@ claims render --non-interactive -t vspherevm -p name=my-vm -p cpu=4 -o ./out
 # Multiple parameters (comma-separated)
 claims render --non-interactive -t vspherevm -p name=my-vm,cpu=4,memory=8Gi
 
+# Render a clusterbook claim with custom API URL
+CLAIM_API_URL=http://localhost:8080 claims render --non-interactive \
+  -t cilium-clusterbook \
+  -p clusterName=testcluster \
+  -p networkKey=10.31.103 \
+  -p registerDns=false \
+  -o output
+
 # Batch rendering with params file
 claims render --non-interactive -f params.yaml -o ./out
 ```
