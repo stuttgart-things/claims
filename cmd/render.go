@@ -6,6 +6,7 @@ import (
 
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
+	"github.com/stuttgart-things/claims/internal/banner"
 )
 
 var (
@@ -90,7 +91,7 @@ func init() {
 }
 
 func runRender(cmd *cobra.Command, args []string) {
-	fmt.Println(logo)
+	banner.Show()
 
 	// Get API URL from flag, environment, or default
 	if apiURL == "" {

@@ -21,7 +21,7 @@ builds:
       - -extldflags=-static
       - -X github.com/stuttgart-things/claims/cmd.version={{.Version}}
       - -X github.com/stuttgart-things/claims/cmd.commit={{.Commit}}
-      - -X github.com/stuttgart-things/claims/cmd.date={{.Date}}
+      - -X github.com/stuttgart-things/claims/cmd.buildDate={{.Date}}
     goos:
       - linux
       - darwin
