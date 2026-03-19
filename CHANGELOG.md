@@ -1,3 +1,10 @@
+# [0.14.0](https://github.com/stuttgart-things/claims/compare/v0.13.0...v0.14.0) (2026-03-19)
+
+
+### Features
+
+* random banner subtitles and multi-endpoint CLAIM_API_URL support ([4f6ed37](https://github.com/stuttgart-things/claims/commit/4f6ed379100031ea8957a798ec659ba931e4bbc8))
+
 # [0.13.0](https://github.com/stuttgart-things/claims/compare/v0.12.1...v0.13.0) (2026-03-19)
 
 
