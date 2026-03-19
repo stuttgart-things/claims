@@ -14,6 +14,7 @@ type ClaimTemplateMetadata struct {
 	Title       string   `json:"title,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
+	Profile     string   `json:"profile,omitempty"`
 }
 
 // ClaimTemplateSpec contains template specification

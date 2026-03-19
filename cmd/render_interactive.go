@@ -234,6 +234,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			FilenamePattern: config.FilenamePattern,
 			SingleFile:      config.SingleFile,
 			DryRun:          config.DryRun,
+			FileMode:        config.FileMode,
 		}
 	} else {
 		// Get example template and name for filename preview
@@ -908,13 +909,37 @@ func runPROptionsForm() (*PRConfig, error) {
 	}, nil
 }
 
-// selectTemplates displays a multi-select form for template selection
+// selectTemplates displays a multi-select form for template selection.
+// When templates belong to multiple profiles, a profile selector is shown first.
 func selectTemplates(available []templates.ClaimTemplate) ([]string, error) {
+	// Collect distinct profiles
+	profiles := distinctProfiles(available)
+
+	// If multiple profiles exist, let the user pick a profile first
+	var filtered []templates.ClaimTemplate
+	if len(profiles) > 1 {
+		selectedProfile, err := selectProfile(profiles)
+		if err != nil {
+			return nil, err
+		}
+		if selectedProfile == "__all__" {
+			filtered = available
+		} else {
+			for _, t := range available {
+				if t.Metadata.Profile == selectedProfile {
+					filtered = append(filtered, t)
+				}
+			}
+		}
+	} else {
+		filtered = available
+	}
+
 	var selected []string
 
-	// Build options from available templates
-	options := make([]huh.Option[string], len(available))
-	for i, t := range available {
+	// Build options from filtered templates
+	options := make([]huh.Option[string], len(filtered))
+	for i, t := range filtered {
 		label := fmt.Sprintf("%s - %s", t.Metadata.Name, t.Metadata.Title)
 		options[i] = huh.NewOption(label, t.Metadata.Name)
 	}
@@ -937,6 +962,52 @@ func selectTemplates(available []templates.ClaimTemplate) ([]string, error) {
 
 	if err := form.Run(); err != nil {
 		return nil, err
+	}
+
+	return selected, nil
+}
+
+// distinctProfiles returns sorted unique profile names from templates.
+func distinctProfiles(available []templates.ClaimTemplate) []string {
+	seen := make(map[string]bool)
+	var profiles []string
+	for _, t := range available {
+		p := t.Metadata.Profile
+		if p == "" {
+			p = "default"
+		}
+		if !seen[p] {
+			seen[p] = true
+			profiles = append(profiles, p)
+		}
+	}
+	sort.Strings(profiles)
+	return profiles
+}
+
+// selectProfile shows a profile selector and returns the chosen profile name.
+func selectProfile(profiles []string) (string, error) {
+	var selected string
+
+	options := []huh.Option[string]{
+		huh.NewOption("All profiles", "__all__"),
+	}
+	for _, p := range profiles {
+		options = append(options, huh.NewOption(p, p))
+	}
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Select template profile").
+				Description("Filter templates by profile, or show all").
+				Options(options...).
+				Value(&selected),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		return "", err
 	}
 
 	return selected, nil
