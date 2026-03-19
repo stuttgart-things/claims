@@ -23,6 +23,7 @@ type RenderConfig struct {
 	FilenamePattern string
 	SingleFile      bool
 	DryRun          bool
+	FileMode        string // "overwrite" (default) or "append"
 
 	// Mode control
 	Interactive bool

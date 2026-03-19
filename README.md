@@ -60,6 +60,7 @@ claims render [flags]
 | `--dry-run` | | Print output without writing files |
 | `--single-file` | | Combine all resources into one file |
 | `--filename-pattern` | | Pattern for output filenames (default: `{{.template}}-{{.name}}.yaml`) |
+| `--file-mode` | | File write mode: `overwrite` (default) or `append` |
 | `--non-interactive` | | Run in non-interactive mode (for CI/CD automation) |
 | `--git-commit` | | Commit rendered files to git |
 | `--git-push` | | Push commits to remote (implies `--git-commit`) |
@@ -106,6 +107,62 @@ claims render -t vsphere-vm -t postgres-db
 # Render multiple templates (comma-separated)
 claims render -t vsphere-vm,postgres-db -o ./out
 ```
+
+### Append Mode
+
+Use `--file-mode=append` to build multi-resource YAML files across multiple render calls:
+
+```bash
+# First render creates the file
+claims render --non-interactive \
+  -t flux-gitrepository \
+  -p name=flux-infra -p url=https://github.com/stuttgart-things/flux.git \
+  -o ./gitrepos --filename-pattern "gitrepositories.yaml"
+
+# Second render appends with --- separator
+claims render --non-interactive \
+  -t flux-gitrepository \
+  -p name=flux-apps -p url=https://github.com/stuttgart-things/flux.git \
+  -o ./gitrepos --filename-pattern "gitrepositories.yaml" \
+  --file-mode=append
+```
+
+Result (`gitrepos/gitrepositories.yaml`):
+
+```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: flux-infra
+  namespace: flux-system
+spec:
+  url: https://github.com/stuttgart-things/flux.git
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: flux-apps
+  namespace: flux-system
+spec:
+  url: https://github.com/stuttgart-things/flux.git
+```
+
+### Profile-Based Template Selection
+
+When the API serves templates from multiple profiles, interactive mode shows a profile selector first:
+
+```
+? Select template profile
+> All profiles
+  Crossplane Claims
+  Flux Kustomizations
+
+? Select templates to render
+  [ ] flux-kustomization-clusterbook-app - Clusterbook App Deployment
+  [ ] flux-kustomization-cert-manager-install - Flux Kustomization Cert-Manager
+```
+
+This requires claim-machinery-api v0.21.0+ with multiple profiles configured via `TEMPLATE_PROFILE_PATH`.
 
 ### Non-Interactive Mode (CI/CD)
 

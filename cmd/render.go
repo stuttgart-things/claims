@@ -25,6 +25,7 @@ var (
 	combineSecrets bool
 	interactive    bool
 	nonInteractive bool
+	fileMode       string
 
 	// Git flags
 	gitCommit       bool
@@ -68,6 +69,8 @@ func init() {
 	renderCmd.Flags().BoolVar(&combineSecrets, "combine-secrets", false, "Save encrypted secrets in the same file as rendered output (--- separated)")
 	renderCmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Force interactive mode")
 	renderCmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Force non-interactive mode")
+	renderCmd.Flags().StringVar(&fileMode, "file-mode", "overwrite", "File write mode: overwrite (default) or append")
+
 
 	// Git flags
 	renderCmd.Flags().BoolVar(&gitCommit, "git-commit", false, "Commit rendered files to git")
@@ -114,6 +117,7 @@ func runRender(cmd *cobra.Command, args []string) {
 		FilenamePattern:  filenamePattern,
 		SingleFile:       singleFile,
 		DryRun:           dryRun,
+		FileMode:         fileMode,
 	}
 
 	// Build git config if any git flags are set

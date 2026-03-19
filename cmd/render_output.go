@@ -15,6 +15,7 @@ type OutputConfig struct {
 	FilenamePattern string
 	SingleFile      bool
 	DryRun          bool
+	FileMode        string // "overwrite" (default) or "append"
 }
 
 // FileInfo holds information used for filename generation
@@ -93,7 +94,8 @@ func writeSingleFile(results []RenderResult, config OutputConfig) error {
 	return nil
 }
 
-// writeSeparateFiles writes each result to its own file
+// writeSeparateFiles writes each result to its own file.
+// In append mode, content is appended with a --- separator if the file already exists.
 func writeSeparateFiles(results []RenderResult, config OutputConfig) error {
 	for i, r := range results {
 		if r.Error != nil {
@@ -109,11 +111,24 @@ func writeSeparateFiles(results []RenderResult, config OutputConfig) error {
 		}
 
 		path := filepath.Join(config.Directory, filename)
+
+		if config.FileMode == "append" {
+			if _, err := os.Stat(path); err == nil {
+				// File exists — append with --- separator
+				if err := appendToFile(path, r.Content); err != nil {
+					return fmt.Errorf("appending to %s: %w", path, err)
+				}
+				results[i].OutputPath = path
+				fmt.Printf("Appended: %s\n", path)
+				continue
+			}
+		}
+
+		// Default: overwrite (or file doesn't exist in append mode)
 		if err := os.WriteFile(path, []byte(r.Content), 0644); err != nil {
 			return fmt.Errorf("writing %s: %w", path, err)
 		}
 
-		// Update the result with the output path
 		results[i].OutputPath = path
 		fmt.Printf("Saved: %s\n", path)
 	}
@@ -158,7 +173,13 @@ func printDryRun(results []RenderResult, config OutputConfig) error {
 			}
 			path := filepath.Join(config.Directory, filename)
 
-			fmt.Printf("Would write: %s\n", path)
+			action := "write"
+			if config.FileMode == "append" {
+				if _, err := os.Stat(path); err == nil {
+					action = "append to"
+				}
+			}
+			fmt.Printf("Would %s: %s\n", action, path)
 			fmt.Println(yamlStyle.Render(strings.TrimSpace(r.Content)))
 			fmt.Println()
 		}

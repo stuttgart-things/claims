@@ -118,6 +118,7 @@ func runNonInteractive(config *RenderConfig) error {
 		FilenamePattern: config.FilenamePattern,
 		SingleFile:      config.SingleFile,
 		DryRun:          config.DryRun,
+		FileMode:        config.FileMode,
 	}
 
 	if err := WriteResults(results, outputConfig); err != nil {
