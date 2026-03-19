@@ -1,3 +1,17 @@
+## [0.12.1](https://github.com/stuttgart-things/claims/compare/v0.12.0...v0.12.1) (2026-03-15)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/charmbracelet/bubbletea to v1.3.10 ([#76](https://github.com/stuttgart-things/claims/issues/76)) ([a453fa6](https://github.com/stuttgart-things/claims/commit/a453fa62e91a28c3987afdaa348236a6cd87fa1c))
+
+# [0.12.0](https://github.com/stuttgart-things/claims/compare/v0.11.0...v0.12.0) (2026-03-15)
+
+
+### Features
+
+* add animated intro banner with glitch effect and version display ([#75](https://github.com/stuttgart-things/claims/issues/75)) ([4ffbbc6](https://github.com/stuttgart-things/claims/commit/4ffbbc69c3fcc11fc5f9e898caf3c3f251142020))
+
 # [0.11.0](https://github.com/stuttgart-things/claims/compare/v0.10.0...v0.11.0) (2026-03-14)
 
 
