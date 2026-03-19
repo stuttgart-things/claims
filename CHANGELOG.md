@@ -1,3 +1,16 @@
+# [0.13.0](https://github.com/stuttgart-things/claims/compare/v0.12.1...v0.13.0) (2026-03-19)
+
+
+### Bug Fixes
+
+* resolve merge conflict in go.mod (take newer bubbletea version) ([c0da474](https://github.com/stuttgart-things/claims/commit/c0da474d24ab18e78e2ed39b11cd2a119d92e5c2))
+
+
+### Features
+
+* add animated intro banner with glitch effect and version display ([91266ab](https://github.com/stuttgart-things/claims/commit/91266ab2ce37d81e61b021b7765485f7a00f6e4c))
+* add profile-based template selection and --file-mode=append option ([1c314b4](https://github.com/stuttgart-things/claims/commit/1c314b4c111f157e8054ac77fa61d2a79ece749c)), closes [#78](https://github.com/stuttgart-things/claims/issues/78)
+
 ## [0.12.1](https://github.com/stuttgart-things/claims/compare/v0.12.0...v0.12.1) (2026-03-15)
 
 
