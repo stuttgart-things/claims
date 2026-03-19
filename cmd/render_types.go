@@ -3,7 +3,8 @@ package cmd
 // RenderConfig holds configuration for the render command
 type RenderConfig struct {
 	// API configuration
-	APIUrl string
+	APIUrl  string
+	APIUrls []string // multiple endpoints parsed from CLAIM_API_URL
 
 	// Template selection
 	Templates []string

@@ -1208,6 +1208,120 @@ func renderAllTemplates(client *templates.Client, allParams []TemplateParams) []
 	return results
 }
 
+// splitAPIURLs splits a colon-separated list of API URLs.
+// Colons inside http:// and https:// schemes are preserved.
+func splitAPIURLs(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []string{"http://localhost:8080"}
+	}
+
+	var urls []string
+	remaining := raw
+	for remaining != "" {
+		if strings.HasPrefix(remaining, "http://") || strings.HasPrefix(remaining, "https://") {
+			scheme := "http://"
+			if strings.HasPrefix(remaining, "https://") {
+				scheme = "https://"
+			}
+			rest := remaining[len(scheme):]
+			idx := strings.Index(rest, ":")
+			if idx == -1 {
+				urls = append(urls, remaining)
+				break
+			}
+			// Check if the colon is part of a port (digits follow)
+			afterColon := rest[idx+1:]
+			portEnd := 0
+			for portEnd < len(afterColon) && afterColon[portEnd] >= '0' && afterColon[portEnd] <= '9' {
+				portEnd++
+			}
+			if portEnd > 0 && (portEnd >= len(afterColon) || afterColon[portEnd] == '/' || afterColon[portEnd] == ':') {
+				// This colon is a port separator — include port, then check for path or next separator
+				fullHost := scheme + rest[:idx+1+portEnd]
+				pathStart := idx + 1 + portEnd
+				if pathStart < len(rest) && rest[pathStart] == '/' {
+					// Include the path up to the next colon that starts a new URL
+					pathRest := rest[pathStart:]
+					nextURL := strings.Index(pathRest, ":http://")
+					nextURLs := strings.Index(pathRest, ":https://")
+					nextSep := -1
+					if nextURL >= 0 {
+						nextSep = nextURL
+					}
+					if nextURLs >= 0 && (nextSep < 0 || nextURLs < nextSep) {
+						nextSep = nextURLs
+					}
+					if nextSep >= 0 {
+						urls = append(urls, fullHost+pathRest[:nextSep])
+						remaining = pathRest[nextSep+1:]
+					} else {
+						urls = append(urls, fullHost+pathRest)
+						break
+					}
+				} else if pathStart < len(rest) && rest[pathStart] == ':' {
+					// Next URL starts immediately after port
+					urls = append(urls, fullHost)
+					remaining = rest[pathStart+1:]
+				} else {
+					urls = append(urls, fullHost)
+					break
+				}
+			} else {
+				// Colon is a separator (no port)
+				urls = append(urls, scheme+rest[:idx])
+				remaining = rest[idx+1:]
+			}
+		} else {
+			idx := strings.Index(remaining, ":")
+			if idx == -1 {
+				urls = append(urls, remaining)
+				break
+			}
+			urls = append(urls, remaining[:idx])
+			remaining = remaining[idx+1:]
+		}
+	}
+
+	var cleaned []string
+	for _, u := range urls {
+		u = strings.TrimSpace(u)
+		if u != "" {
+			cleaned = append(cleaned, u)
+		}
+	}
+	if len(cleaned) == 0 {
+		return []string{"http://localhost:8080"}
+	}
+	return cleaned
+}
+
+// selectAPIEndpoint shows a selector for multiple API endpoints.
+func selectAPIEndpoint(urls []string) (string, error) {
+	var selected string
+
+	options := make([]huh.Option[string], len(urls))
+	for i, u := range urls {
+		options[i] = huh.NewOption(u, u)
+	}
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Select API endpoint").
+				Description("Multiple endpoints configured via CLAIM_API_URL").
+				Options(options...).
+				Value(&selected),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		return "", err
+	}
+
+	return selected, nil
+}
+
 // promptAPIURL prompts the user to confirm or change the API URL
 func promptAPIURL(currentURL string) (string, error) {
 	apiURLInput := currentURL
