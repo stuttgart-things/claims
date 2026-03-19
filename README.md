@@ -89,6 +89,9 @@ claims render --api-url http://api.example.com:8080
 # Via environment variable
 CLAIM_API_URL=http://api.example.com:8080 claims render
 
+# Multiple API endpoints (interactive: shows selector, non-interactive: uses first)
+CLAIM_API_URL=http://dev-api:8080:http://staging-api:8080:http://prod-api:8080 claims render
+
 # Save to custom directory
 claims render -o ./manifests
 
@@ -146,6 +149,35 @@ metadata:
 spec:
   url: https://github.com/stuttgart-things/flux.git
 ```
+
+### Multiple API Endpoints
+
+`CLAIM_API_URL` supports colon-separated multiple endpoints. In interactive mode, a selector is shown. In non-interactive mode, the first endpoint is used.
+
+```bash
+# Configure multiple claim-machinery-api instances
+export CLAIM_API_URL=http://dev-api:8080:http://staging-api:8080:http://prod-api:8080
+claims render
+```
+
+Interactive prompt:
+
+```
+? Select API endpoint
+> http://dev-api:8080
+  http://staging-api:8080
+  http://prod-api:8080
+```
+
+Non-interactive (uses first endpoint):
+
+```bash
+CLAIM_API_URL=http://dev-api:8080:http://staging-api:8080 \
+  claims render --non-interactive -t my-template -p name=foo
+# Connects to: http://dev-api:8080
+```
+
+URL colons in `http://`, `https://`, and port numbers are handled correctly — only bare `:` between URLs acts as a separator.
 
 ### Profile-Based Template Selection
 
@@ -383,7 +415,7 @@ The `claims render` command follows an interactive workflow:
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
-| `CLAIM_API_URL` | API base URL | `http://localhost:8080` |
+| `CLAIM_API_URL` | API base URL (colon-separated for multiple endpoints) | `http://localhost:8080` |
 | `GIT_USER` | Git username for push operations | - |
 | `GIT_TOKEN` | Git token/password for push operations | - |
 | `GITHUB_TOKEN` | GitHub token (fallback for `GIT_TOKEN`) | - |
