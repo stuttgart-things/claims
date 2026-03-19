@@ -96,7 +96,8 @@ func init() {
 func runRender(cmd *cobra.Command, args []string) {
 	banner.Show()
 
-	// Get API URL from flag, environment, or default
+	// Get API URL from flag, environment, or default.
+	// CLAIM_API_URL supports colon-separated multiple endpoints (URL colons preserved).
 	if apiURL == "" {
 		apiURL = os.Getenv("CLAIM_API_URL")
 	}
@@ -107,6 +108,7 @@ func runRender(cmd *cobra.Command, args []string) {
 	// Build render config
 	config := &RenderConfig{
 		APIUrl:           apiURL,
+		APIUrls:          splitAPIURLs(apiURL),
 		Templates:        templateNames,
 		ParamsFile:       paramsFile,
 		InlineParamsRaw:  inlineParams,
@@ -158,17 +160,25 @@ func runRender(cmd *cobra.Command, args []string) {
 
 	var err error
 	if config.Interactive {
-		// Interactive mode - prompt for API URL confirmation
-		confirmedURL, promptErr := promptAPIURL(apiURL)
+		// Interactive mode — select or confirm API endpoint
+		var selectedURL string
+		var promptErr error
+		if len(config.APIUrls) > 1 {
+			selectedURL, promptErr = selectAPIEndpoint(config.APIUrls)
+		} else {
+			selectedURL, promptErr = promptAPIURL(config.APIUrls[0])
+		}
 		if promptErr != nil {
 			fmt.Printf("Error: %v\n", promptErr)
 			os.Exit(1)
 		}
-		config.APIUrl = confirmedURL
+		config.APIUrl = selectedURL
 		fmt.Printf("\nConnecting to API: %s\n\n", config.APIUrl)
 
 		err = runInteractive(config)
 	} else {
+		// Non-interactive: use first URL
+		config.APIUrl = config.APIUrls[0]
 		fmt.Printf("Connecting to API: %s\n\n", config.APIUrl)
 		err = runNonInteractive(config)
 	}

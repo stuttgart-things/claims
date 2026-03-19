@@ -45,7 +45,6 @@ var (
 type tickMsg time.Time
 
 type model struct {
-	width        int
 	frame        int
 	glitchPhase  bool
 	glitchFrames int
@@ -74,9 +73,8 @@ func Show() {
 		return
 	}
 
-	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	p := tea.NewProgram(initialModel())
 	_, _ = p.Run()
-	fmt.Println(renderGradient())
 }
 
 // renderGradient renders the banner with the magenta-to-cyan per-character gradient.
@@ -107,8 +105,8 @@ func renderGradient() string {
 		result.WriteString("\n")
 	}
 
-	// Center the subtitle relative to the banner width
-	subtitle := "rendering your resource claims since '26"
+	// Center a random subtitle relative to the banner width
+	subtitle := randomSubtitle()
 	pad := (maxWidth - len(subtitle)) / 2
 	if pad < 0 {
 		pad = 0
@@ -127,9 +125,24 @@ func renderGradient() string {
 	return result.String()
 }
 
+var subtitles = []string{
+	"rendering resource claims since '26",
+	"your friendly neighborhood claim renderer",
+	"from YAML dreams to Kubernetes reality",
+	"one claim to rule them all",
+	"kubectl apply -f imagination",
+	"making infrastructure self-service",
+	"because copy-paste YAML is so last year",
+	"claim it, render it, ship it",
+	"turning templates into truth",
+}
+
+func randomSubtitle() string {
+	return subtitles[rand.IntN(len(subtitles))]
+}
+
 func initialModel() model {
 	return model{
-		width:        80,
 		glitchPhase:  true,
 		glitchFrames: 0,
 	}
@@ -150,10 +163,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		m.done = true
 		return m, tea.Quit
-
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		return m, nil
 
 	case tickMsg:
 		_ = msg
@@ -181,18 +190,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	if m.done {
-		return ""
+		return renderGradient()
 	}
 
 	var output string
 	if m.glitchPhase {
 		output = glitchText(bannerText, m.glitchFrames)
 	} else {
-		// Post-glitch: show the gradient logo (same as final static output)
 		output = renderGradient()
 	}
 
-	return applyScanlines(centerText(output, m.width))
+	return applyScanlines(output)
 }
 
 func glitchText(text string, glitchFrame int) string {
@@ -230,14 +238,3 @@ func applyScanlines(text string) string {
 	return strings.Join(lines, "\n")
 }
 
-func centerText(text string, width int) string {
-	lines := strings.Split(text, "\n")
-	for i, line := range lines {
-		visLen := lipgloss.Width(line)
-		if visLen < width {
-			pad := (width - visLen) / 2
-			lines[i] = strings.Repeat(" ", pad) + line
-		}
-	}
-	return strings.Join(lines, "\n")
-}
