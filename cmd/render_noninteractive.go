@@ -93,6 +93,15 @@ func runNonInteractive(config *RenderConfig) error {
 		resourceName := "output"
 		if name, ok := tp.Parameters["name"]; ok {
 			resourceName = fmt.Sprintf("%v", name)
+		} else if tmpl := templateLookup[tp.Name]; tmpl != nil {
+			for _, p := range tmpl.Spec.Parameters {
+				if p.Name == "name" {
+					if d, ok := p.Default.(string); ok && d != "" {
+						resourceName = d
+					}
+					break
+				}
+			}
 		}
 
 		results = append(results, RenderResult{
