@@ -1,3 +1,10 @@
+## [0.14.2](https://github.com/stuttgart-things/claims/compare/v0.14.1...v0.14.2) (2026-03-20)
+
+
+### Bug Fixes
+
+* use StringArrayVar for -p flag to preserve commas in values ([266dd30](https://github.com/stuttgart-things/claims/commit/266dd303a7f4ff824bfd1ef9af2e450417010b7d))
+
 ## [0.14.1](https://github.com/stuttgart-things/claims/compare/v0.14.0...v0.14.1) (2026-03-20)
 
 
