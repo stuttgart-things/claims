@@ -1,3 +1,10 @@
+## [0.14.1](https://github.com/stuttgart-things/claims/compare/v0.14.0...v0.14.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* resolve template default name for filename pattern ([e248d1d](https://github.com/stuttgart-things/claims/commit/e248d1d097259a4d5cd7d09e9b404751500a5e96))
+
 # [0.14.0](https://github.com/stuttgart-things/claims/compare/v0.13.0...v0.14.0) (2026-03-19)
 
 
