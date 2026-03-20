@@ -63,8 +63,8 @@ func init() {
 
 	// Non-interactive mode flags
 	renderCmd.Flags().StringVarP(&paramsFile, "params-file", "f", "", "YAML/JSON file with parameters")
-	renderCmd.Flags().StringSliceVarP(&inlineParams, "param", "p", nil, "Inline param (key=value, repeatable)")
-	renderCmd.Flags().StringSliceVarP(&inlineSecrets, "secret", "s", nil, "Secret param (key=value, repeatable)")
+	renderCmd.Flags().StringArrayVarP(&inlineParams, "param", "p", nil, "Inline param (key=value, repeatable)")
+	renderCmd.Flags().StringArrayVarP(&inlineSecrets, "secret", "s", nil, "Secret param (key=value, repeatable)")
 	renderCmd.Flags().BoolVar(&skipSecrets, "skip-secrets", false, "Skip secret generation even if template defines them")
 	renderCmd.Flags().BoolVar(&combineSecrets, "combine-secrets", false, "Save encrypted secrets in the same file as rendered output (--- separated)")
 	renderCmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Force interactive mode")
