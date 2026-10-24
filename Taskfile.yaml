@@ -39,7 +39,7 @@ tasks:
       - task: goBuild:build
         vars:
           SRC: .
-          GO_VERSION: "1.25.5"
+          GO_VERSION: "1.27.3"
           OS: "{{ .OS }}"
           ARCH: "{{ .ARCH }}"
           PACKAGE_NAME: "{{ .MODULE }}"
