@@ -1,3 +1,12 @@
+## [0.14.3](https://github.com/stuttgart-things/claims/compare/v0.14.2...v0.14.3) (2026-10-24)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/go-git/go-git/v5 to v5.19.3 ([#85](https://github.com/stuttgart-things/claims/issues/85)) ([3569637](https://github.com/stuttgart-things/claims/commit/356963732c0fd7dd9d205012bcc77367619275be))
+* **deps:** update module github.com/lucasb-eyer/go-colorful to v1.4.1 ([#84](https://github.com/stuttgart-things/claims/issues/84)) ([bd7eb7e](https://github.com/stuttgart-things/claims/commit/bd7eb7eaaa8e5997e64d5853fad4c64cd9646dd9))
+* **deps:** update module github.com/mattn/go-isatty to v0.0.24 ([#86](https://github.com/stuttgart-things/claims/issues/86)) ([750bc36](https://github.com/stuttgart-things/claims/commit/750bc36384532675c4591d6a45986056bf930fef))
+
 ## [0.14.2](https://github.com/stuttgart-things/claims/compare/v0.14.1...v0.14.2) (2026-03-20)
 
 
