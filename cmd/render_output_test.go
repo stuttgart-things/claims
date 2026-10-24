@@ -91,7 +91,7 @@ func TestWriteResults_SeparateFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	results := []RenderResult{
 		{
@@ -144,7 +144,7 @@ func TestWriteResults_SingleFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	results := []RenderResult{
 		{
@@ -194,7 +194,7 @@ func TestWriteResults_DryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	results := []RenderResult{
 		{
@@ -231,7 +231,7 @@ func TestWriteResults_CreatesDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Use a nested directory that doesn't exist
 	nestedDir := filepath.Join(tmpDir, "nested", "output", "dir")
@@ -273,7 +273,7 @@ func TestWriteResults_SkipsFailedResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	results := []RenderResult{
 		{
@@ -318,7 +318,7 @@ func TestWriteSingleResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	config := OutputConfig{
 		Directory:       tmpDir,

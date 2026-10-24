@@ -71,7 +71,6 @@ func init() {
 	renderCmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Force non-interactive mode")
 	renderCmd.Flags().StringVar(&fileMode, "file-mode", "overwrite", "File write mode: overwrite (default) or append")
 
-
 	// Git flags
 	renderCmd.Flags().BoolVar(&gitCommit, "git-commit", false, "Commit rendered files to git")
 	renderCmd.Flags().BoolVar(&gitPush, "git-push", false, "Push commits to remote (implies --git-commit)")

@@ -14,7 +14,7 @@ parameters:
   memory: 8Gi
 `
 	tmpFile := createTempFile(t, "params-single.yaml", content)
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	pf, err := ParseFile(tmpFile)
 	if err != nil {
@@ -51,7 +51,7 @@ func TestParseFile_MultiTemplateYAML(t *testing.T) {
       version: "15"
 `
 	tmpFile := createTempFile(t, "params-multi.yaml", content)
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	pf, err := ParseFile(tmpFile)
 	if err != nil {
@@ -80,7 +80,7 @@ func TestParseFile_JSON(t *testing.T) {
   }
 }`
 	tmpFile := createTempFile(t, "params.json", content)
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	pf, err := ParseFile(tmpFile)
 	if err != nil {
@@ -103,7 +103,7 @@ parameters:
   name: my-vm
 `
 	tmpFile := createTempFile(t, "params.txt", content)
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	pf, err := ParseFile(tmpFile)
 	if err != nil {
@@ -243,7 +243,7 @@ secrets:
   API_KEY: abc-def
 `
 	tmpFile := createTempFile(t, "params-secrets.yaml", content)
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	pf, err := ParseFile(tmpFile)
 	if err != nil {

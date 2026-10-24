@@ -40,11 +40,11 @@ func TestPrintTable(t *testing.T) {
 
 	printTable(entries)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
 	// Verify header columns
@@ -93,11 +93,11 @@ func TestPrintJSON(t *testing.T) {
 
 	printJSON(entries)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
 	// Verify it is valid JSON

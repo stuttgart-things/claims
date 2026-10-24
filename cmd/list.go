@@ -72,15 +72,15 @@ func runList(cmd *cobra.Command, args []string) {
 
 func printTable(entries []registry.ClaimEntry) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tTEMPLATE\tCATEGORY\tNAMESPACE\tSTATUS\tCREATED BY\tSOURCE")
-	fmt.Fprintln(w, "----\t--------\t--------\t---------\t------\t----------\t------")
+	_, _ = fmt.Fprintln(w, "NAME\tTEMPLATE\tCATEGORY\tNAMESPACE\tSTATUS\tCREATED BY\tSOURCE")
+	_, _ = fmt.Fprintln(w, "----\t--------\t--------\t---------\t------\t----------\t------")
 
 	for _, e := range entries {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			e.Name, e.Template, e.Category, e.Namespace, e.Status, e.CreatedBy, e.Source)
 	}
 
-	w.Flush()
+	_ = w.Flush()
 }
 
 func printJSON(entries []registry.ClaimEntry) {

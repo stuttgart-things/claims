@@ -37,13 +37,13 @@ func Encrypt(plaintext []byte, recipients string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating temp file: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	if _, err := tmpFile.Write(plaintext); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		return nil, fmt.Errorf("writing temp file: %w", err)
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	cmd := exec.Command("sops",
 		"--encrypt",

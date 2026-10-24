@@ -78,7 +78,7 @@ func Clone(url, user, token string) (*GitOps, string, error) {
 
 	repo, err := git.PlainClone(tmpDir, false, cloneOpts)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		return nil, "", fmt.Errorf("cloning repository: %w", err)
 	}
 

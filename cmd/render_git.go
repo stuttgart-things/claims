@@ -43,7 +43,7 @@ func executeGitOperations(results []RenderResult, config *RenderConfig) error {
 		if err != nil {
 			return err
 		}
-		defer g.Cleanup()
+		defer func() { _ = g.Cleanup() }()
 
 		// Adjust output directory to be inside cloned repo
 		config.OutputDir = filepath.Join(tmpDir, config.OutputDir)

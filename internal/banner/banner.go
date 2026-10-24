@@ -237,4 +237,3 @@ func applyScanlines(text string) string {
 	}
 	return strings.Join(lines, "\n")
 }
-
