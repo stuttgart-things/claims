@@ -1,0 +1,22 @@
+---
+name: Go Lint, Test & Build
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    uses: stuttgart-things/github-workflow-templates/.github/workflows/call-golang-validation.yaml@main
+    with:
+      runs-on: ubuntu-latest
+      module-name: claims
+    secrets: inherit  # pragma: allowlist secret
