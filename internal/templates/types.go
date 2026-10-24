@@ -30,7 +30,7 @@ type ClaimTemplateSpec struct {
 // Secret values are collected and encrypted client-side (SOPS/age) — they never pass through the API.
 type SecretTemplate struct {
 	Name       string      `json:"name"`       // supports Go template expressions e.g. "{{.secretName}}"
-	Namespace  string      `json:"namespace"`   // supports Go template expressions
+	Namespace  string      `json:"namespace"`  // supports Go template expressions
 	Parameters []Parameter `json:"parameters"` // secret key definitions
 }
 
@@ -43,17 +43,17 @@ type ValueFromSpec struct {
 
 // Parameter defines a template parameter
 type Parameter struct {
-	Name        string      `json:"name"`
-	Title       string      `json:"title"`
-	Description string      `json:"description,omitempty"`
-	Type        string      `json:"type"`
-	Default     interface{} `json:"default,omitempty"`
-	Required    bool        `json:"required,omitempty"`
-	Enum        []string    `json:"enum,omitempty"`
-	Pattern     string      `json:"pattern,omitempty"`
-	Hidden      bool        `json:"hidden,omitempty"`
-	AllowRandom bool        `json:"allowRandom,omitempty"`
-	Multiselect bool        `json:"multiselect,omitempty"`
+	Name        string         `json:"name"`
+	Title       string         `json:"title"`
+	Description string         `json:"description,omitempty"`
+	Type        string         `json:"type"`
+	Default     interface{}    `json:"default,omitempty"`
+	Required    bool           `json:"required,omitempty"`
+	Enum        []string       `json:"enum,omitempty"`
+	Pattern     string         `json:"pattern,omitempty"`
+	Hidden      bool           `json:"hidden,omitempty"`
+	AllowRandom bool           `json:"allowRandom,omitempty"`
+	Multiselect bool           `json:"multiselect,omitempty"`
 	ValueFrom   *ValueFromSpec `json:"valueFrom,omitempty"`
 }
 

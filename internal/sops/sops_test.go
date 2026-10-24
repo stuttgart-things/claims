@@ -79,10 +79,10 @@ func TestGenerateSecretYAML_MissingNamespace(t *testing.T) {
 func TestCheckSOPSAvailable_NoRecipients(t *testing.T) {
 	// Save and clear the env var
 	orig := os.Getenv("SOPS_AGE_RECIPIENTS")
-	os.Unsetenv("SOPS_AGE_RECIPIENTS")
+	_ = os.Unsetenv("SOPS_AGE_RECIPIENTS")
 	defer func() {
 		if orig != "" {
-			os.Setenv("SOPS_AGE_RECIPIENTS", orig)
+			_ = os.Setenv("SOPS_AGE_RECIPIENTS", orig)
 		}
 	}()
 

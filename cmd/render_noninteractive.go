@@ -172,7 +172,7 @@ func runNonInteractive(config *RenderConfig) error {
 							fmt.Printf("  Appended encrypted secret to: %s\n", r.OutputPath)
 							// Remove the separate secret file
 							if sr.OutputPath != "" && sr.OutputPath != r.OutputPath {
-								os.Remove(sr.OutputPath)
+								_ = os.Remove(sr.OutputPath)
 							}
 						}
 						break

@@ -193,7 +193,7 @@ func appendToFile(path string, content string) error {
 	if err != nil {
 		return fmt.Errorf("opening file for append: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if _, err := f.WriteString("\n---\n" + strings.TrimSpace(content) + "\n"); err != nil {
 		return fmt.Errorf("appending to file: %w", err)

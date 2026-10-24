@@ -75,14 +75,14 @@ func generatePRDescription(results []RenderResult, config *RenderConfig) string 
 
 	for _, r := range results {
 		if r.Error == nil {
-			sb.WriteString(fmt.Sprintf("- **%s** → `%s`\n", r.TemplateName, r.OutputPath))
+			_, _ = fmt.Fprintf(&sb, "- **%s** → `%s`\n", r.TemplateName, r.OutputPath)
 		}
 	}
 
 	sb.WriteString("\n## Files Changed\n\n")
 	for _, r := range results {
 		if r.Error == nil && r.OutputPath != "" {
-			sb.WriteString(fmt.Sprintf("- `%s`\n", r.OutputPath))
+			_, _ = fmt.Fprintf(&sb, "- `%s`\n", r.OutputPath)
 		}
 	}
 

@@ -341,7 +341,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 					fmt.Printf("%s\n", successStyle.Render(fmt.Sprintf("  Appended encrypted secret to: %s", r.OutputPath)))
 					// Remove the separate secret file if it was written
 					if sr.OutputPath != "" && sr.OutputPath != r.OutputPath {
-						os.Remove(sr.OutputPath)
+						_ = os.Remove(sr.OutputPath)
 					}
 				}
 			} else {
@@ -577,7 +577,7 @@ func createNewFolder(basePath string) (string, bool, error) {
 
 // manualDirectoryInput allows the user to type a directory path manually
 func manualDirectoryInput(defaultPath string) (string, error) {
-	var outputDir string = defaultPath
+	outputDir := defaultPath
 
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -855,7 +855,7 @@ func runPROptionsForm() (*PRConfig, error) {
 		prTitle       string
 		prDescription string
 		prLabels      string
-		prBase        string = "main"
+		prBase        = "main"
 	)
 
 	form := huh.NewForm(
