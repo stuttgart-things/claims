@@ -25,6 +25,7 @@ type RenderConfig struct {
 	SingleFile      bool
 	DryRun          bool
 	FileMode        string // "overwrite" (default) or "append"
+	Layout          string // "" (output-dir + filename-pattern + registry) or "source-path"
 
 	// Mode control
 	Interactive bool

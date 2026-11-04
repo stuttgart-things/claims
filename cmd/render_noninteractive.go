@@ -113,6 +113,21 @@ func runNonInteractive(config *RenderConfig) error {
 		fmt.Printf("  Rendered successfully\n")
 	}
 
+	// The source-path layout: the order names its files; no --output-dir
+	// pattern, no registry (claims#92).
+	if config.Layout == LayoutSourcePath {
+		for _, tp := range templateParams {
+			if t := templateLookup[tp.Name]; t != nil && len(t.Spec.Secrets) > 0 {
+				return fmt.Errorf("--layout %s does not handle secrets yet (template %s defines some)", LayoutSourcePath, tp.Name)
+			}
+		}
+		orders, err := planLayout(results, templateParams, templateLookup)
+		if err != nil {
+			return err
+		}
+		return runSourcePathLayout(orders, config)
+	}
+
 	// Check for any errors
 	hasErrors := false
 	for _, r := range results {

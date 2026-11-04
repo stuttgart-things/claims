@@ -1,0 +1,56 @@
+---
+# snapshot -- a VM with one use case (baseos), ordered with the
+# Backstage template create-vm. A VM, not a platform: no Argo CD registration,
+# no kubeconfig in Vault, no Flux. For a full cluster use create-cluster-stack.
+#
+# Read ./README.md before removing it: this Kustomization does not prune.
+# Deleting is two steps, FILE FIRST: git rm this file (this directory has no
+# kustomization.yaml to edit) and merge, then kubectl delete nativevspherevm snapshot-vm.
+# The other order does not hold -- the next reconcile recreates the VM.
+apiVersion: resources.stuttgart-things.com/v1alpha1
+kind: NativeVsphereVM
+metadata:
+  name: snapshot-vm
+  namespace: default
+  annotations:
+    stuttgart-things.com/management-cluster: machinery
+    # The file this XR lives in: what deletes it removes the file first
+    # (hack/check-xr-source-path.py keeps it honest).
+    stuttgart-things.com/source-path: clusters/labda/vsphere/machinery-orders-xrs/snapshot.yaml
+    stuttgart-things.com/requested-by: user:default/template-check
+    stuttgart-things.com/owner: user:default/template-check
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  # vspherevm-labda: datastore, resource pool, network and template.
+  environmentConfig: labda
+  vm:
+    name: snapshot
+    cpu: "8"
+    ram: "16384"
+    disk: "100"
+    tagsPolicy: Merge
+  # The VM's own AnsibleRun, emitted once the VM has an IP. Collections come
+  # from the ansible-run-defaults EnvironmentConfig; an extraCollections list
+  # here would REPLACE them, not add to them.
+  ansible:
+    enabled: true
+    pipelineNamespace: tekton-ci
+    crossplaneProviderConfig: in-cluster
+    playbooks:
+      - sthings.baseos.setup
+    varsFile:
+      - manage_filesystem+-true
+      - update_packages+-true
+      - vm_hostname+-snapshot
+      # Build marker: sthings.baseos.setup writes these to /etc/sthings/build.yaml
+      # on the first run; the login banner shows them as BUILT
+      # (stuttgart-things/stuttgart-things#3439).
+      - sthings_build_source+-create-vm
+      - sthings_build_order+-snapshot-vm
+      - sthings_build_use_case+-baseos
+      - sthings_build_lab+-labda
+      - sthings_build_management_cluster+-machinery
+      # How it was built, and where the management cluster lives (each lab
+      # builds its own VMs: machinery in LabDA, machinery-labul in LabUL).
+      - sthings_build_method+-crossplane
+      - sthings_build_management_lab+-labda

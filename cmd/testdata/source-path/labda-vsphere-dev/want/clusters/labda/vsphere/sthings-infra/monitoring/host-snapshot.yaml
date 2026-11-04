@@ -1,0 +1,33 @@
+
+---
+# Host monitoring for snapshot (stuttgart-things/stuttgart-things#3510),
+# written by the Backstage template create-vm: the central Prometheus
+# on sthings-infra scrapes the node_exporter the VM's last play installs
+# (sthings.baseos.node_exporter, port 9100). The alerts are the shared ones in
+# host-exporters.yaml -- they select job="host-exporters" and read `host`.
+#
+# One object per VM, not a line in host-exporters.yaml, so an order never
+# edits a shared file. Same jobName: the operator names the scrape job itself
+# (scrapeConfig/monitoring/<name>) and only SETS the job label from jobName,
+# so several ScrapeConfigs with one jobName do not collide.
+#
+# Targets by FQDN: the VM's address is not known when it is ordered, and the
+# lab zones resolve in the pods here (CoreDNS forwards to the node's resolver;
+# checked from a pod on 2026-10-07 against every host in host-exporters.yaml).
+#
+# Until the VM is built and its exporter runs, HostExporterDown fires for it.
+# Deleting the VM: git rm this file too (Flux prunes it).
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: host-snapshot
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack   # the Prometheus' scrapeConfigSelector
+spec:
+  jobName: host-exporters
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  staticConfigs:
+    - labels: {role: dev, lab: labda, host: snapshot.tiab.labda.sva.de}
+      targets: ["snapshot.tiab.labda.sva.de:9100"]

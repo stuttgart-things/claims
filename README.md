@@ -312,6 +312,46 @@ PR creation requires the GitHub CLI (`gh`) to be installed and authenticated:
 gh auth login
 ```
 
+### Source-Path Layout (`--layout source-path`)
+
+For orders that know where they belong -- the VM orders of
+`xr-native-vm` (stuttgart-things/kcl) -- the order decides the files, not
+`--filename-pattern`:
+
+- a document annotated `stuttgart-things.com/target-path` goes to that file
+  (e.g. a dev VM's ScrapeConfig)
+- a document annotated `stuttgart-things.com/source-path` goes to that file
+  (the XR: the annotation names the file it lives in)
+- a document with neither goes to the file of the document before it (e.g.
+  the dev VM's EnvironmentConfig, next to its XR)
+
+Paths are relative to `--output-dir`, which is the repository root. A file
+that exists already is refused (the name is taken). If a `kustomization.yaml`
+sits next to a file, `  - <file>` is appended as its last line (once;
+`resources:` must be the last key); a directory without one -- like today's
+`machinery-orders-xrs` -- is applied as a whole and gets nothing. No
+`claims/registry.yaml` is written: the order's file with its annotations is
+the record. Non-interactive only; templates with secrets are refused.
+
+With `--git-commit`/`--git-push`/`--create-pr` the branch, commit message and
+PR follow the Backstage templates, so the repository's checks and release
+tooling treat the PR like theirs. A VM order (template type `xr-native-vm`)
+gets create-vm's: branch `vm-<name>`, title
+`feat(machinery): VM <name> (<use_case>, <lab>) (MERGE = BAU)`. Flags
+override them.
+
+```bash
+# Preview: every file, the kustomization lines, branch and PR title
+claims render --non-interactive --layout source-path -o ~/projects/stuttgart-things \
+  -t native-vm-labda-vsphere -p name=my-vm -p use_case=dev -p size=large --dry-run
+
+# Order it: branch vm-my-vm, commit, push, PR
+claims render --non-interactive --layout source-path -o ~/projects/stuttgart-things \
+  -t native-vm-labda-vsphere -p name=my-vm -p use_case=dev -p size=large --create-pr
+```
+
+Start from an up-to-date `main`: the branch is created from the current HEAD.
+
 ### encrypt
 
 Create SOPS-encrypted Kubernetes Secrets using age encryption. Fetches a template from the API, collects secret values, generates a K8s Secret YAML, encrypts it with SOPS, and optionally commits via Git PR.
