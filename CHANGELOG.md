@@ -5,6 +5,13 @@
 
 * optional bearer-token auth for claim-machinery-api ([#96](https://github.com/stuttgart-things/claims/issues/96)) ([2594d93](https://github.com/stuttgart-things/claims/commit/2594d9324a87a318578f4c1d5f017f7e5b414066)), closes [#90](https://github.com/stuttgart-things/claims/issues/90)
 
+# [0.16.0](https://github.com/stuttgart-things/claims/compare/v0.15.0...v0.16.0) (2026-11-04)
+
+
+### Features
+
+* optional bearer-token auth for claim-machinery-api ([#96](https://github.com/stuttgart-things/claims/issues/96)) ([2594d93](https://github.com/stuttgart-things/claims/commit/2594d9324a87a318578f4c1d5f017f7e5b414066)), closes [#90](https://github.com/stuttgart-things/claims/issues/90)
+
 # [0.15.0](https://github.com/stuttgart-things/claims/compare/v0.14.3...v0.15.0) (2026-11-04)
 
 
