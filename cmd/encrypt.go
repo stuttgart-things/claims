@@ -79,6 +79,8 @@ func init() {
 	encryptCmd.Flags().BoolVarP(&encryptInteractive, "interactive", "i", false, "Force interactive mode")
 	encryptCmd.Flags().BoolVar(&encryptNonInteractive, "non-interactive", false, "Force non-interactive mode")
 
+	addAPIAuthFlags(encryptCmd)
+
 	rootCmd.AddCommand(encryptCmd)
 }
 
@@ -139,6 +141,13 @@ func runEncrypt(cmd *cobra.Command, args []string) {
 	} else {
 		config.Interactive = isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
 	}
+
+	auth, authErr := resolveAPIAuth()
+	if authErr != nil {
+		fmt.Println(errorStyle.Render(authErr.Error()))
+		os.Exit(1)
+	}
+	config.Auth = auth
 
 	var err error
 	if config.Interactive {

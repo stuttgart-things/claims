@@ -91,6 +91,8 @@ func init() {
 	renderCmd.Flags().StringSliceVar(&prLabels, "pr-labels", nil, "PR labels (comma-separated)")
 	renderCmd.Flags().StringVar(&prBase, "pr-base", "main", "Base branch for PR")
 
+	addAPIAuthFlags(renderCmd)
+
 	rootCmd.AddCommand(renderCmd)
 }
 
@@ -164,6 +166,13 @@ func runRender(cmd *cobra.Command, args []string) {
 		fmt.Println(errorStyle.Render(err.Error()))
 		os.Exit(1)
 	}
+
+	auth, authErr := resolveAPIAuth()
+	if authErr != nil {
+		fmt.Println(errorStyle.Render(authErr.Error()))
+		os.Exit(1)
+	}
+	config.Auth = auth
 
 	var err error
 	if config.Interactive {

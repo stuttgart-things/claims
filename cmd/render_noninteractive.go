@@ -15,7 +15,7 @@ func runNonInteractive(config *RenderConfig) error {
 		return fmt.Errorf("non-interactive mode requires --params-file or --templates")
 	}
 
-	client := templates.NewClient(config.APIUrl)
+	client := newAPIClient(config.APIUrl, config.Auth)
 
 	// Parse parameter file if provided
 	var templateParams []params.TemplateParams
