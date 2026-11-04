@@ -1,0 +1,128 @@
+---
+# snapshot -- a VM with one use case (dev), ordered with the
+# Backstage template create-vm. A VM, not a platform: no Argo CD registration,
+# no kubeconfig in Vault, no Flux. For a full cluster use create-cluster-stack.
+#
+# Read ./README.md before removing it: this Kustomization does not prune.
+# Deleting is two steps, FILE FIRST: git rm this file (this directory has no
+# kustomization.yaml to edit) and merge, then kubectl delete nativevspherevm snapshot-vm.
+# The other order does not hold -- the next reconcile recreates the VM.
+apiVersion: resources.stuttgart-things.com/v1alpha1
+kind: NativeVsphereVM
+metadata:
+  name: snapshot-vm
+  namespace: default
+  annotations:
+    stuttgart-things.com/management-cluster: machinery
+    # The file this XR lives in: what deletes it removes the file first
+    # (hack/check-xr-source-path.py keeps it honest).
+    stuttgart-things.com/source-path: clusters/labda/vsphere/machinery-orders-xrs/snapshot.yaml
+    stuttgart-things.com/requested-by: user:default/template-check
+    stuttgart-things.com/owner: user:default/template-check
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  # vspherevm-labda: datastore, resource pool, network and template.
+  environmentConfig: labda
+  vm:
+    name: snapshot
+    cpu: "8"
+    ram: "16384"
+    disk: "100"
+    tagsPolicy: Merge
+  # The VM's own AnsibleRun, emitted once the VM has an IP. Collections come
+  # from the ansible-run-defaults EnvironmentConfig; an extraCollections list
+  # here would REPLACE them, not add to them.
+  ansible:
+    enabled: true
+    pipelineNamespace: tekton-ci
+    crossplaneProviderConfig: in-cluster
+    # AppRole devvm-dotfiles-reader (read on devvm/data/dotfiles in the infra
+    # Vault): sthings.baseos.dotfiles reads the age key and the dotfiles deploy
+    # key with it (stuttgart-things/stuttgart-things#3439).
+    vaultSecretName: vault-devvm-dotfiles-reader  # pragma: allowlist secret
+    playbooks:
+      - sthings.baseos.setup
+      # sthings.baseos.dev's imports, in its order, only the ticked ones.
+      - sthings.baseos.binaries
+      - sthings.baseos.ansible
+      - sthings.baseos.golang
+      - sthings.baseos.pre_commit
+      - sthings.baseos.semantic_release
+      - sthings.container.docker
+      - sthings.container.tools
+      - sthings.container.nerdctl
+      - sthings.container.podman
+      - sthings.baseos.vhs
+      # A container runtime was installed: reboot before the user plays.
+      - sthings.baseos.reboot_vm
+      - sthings.baseos.claude_code
+      - sthings.baseos.starship
+      - sthings.baseos.tmux
+      # fzf, zoxide, atuin (+ bash-preexec, loaded before starship's init).
+      - sthings.baseos.shell_tools
+      # chezmoi dotfiles: loadenv, ~/.secrets.d, the global Taskfile.
+      - sthings.baseos.dotfiles
+      # Restarts containerd, creates ~/.kube, installs KCL.
+      - sthings.baseos.dev_config
+      - sthings.container.kind
+      # Host monitoring, last: the central Prometheus on sthings-infra scrapes
+      # it (clusters/labda/vsphere/sthings-infra/monitoring/host-snapshot.yaml,
+      # in the same pull request; stuttgart-things/stuttgart-things#3510).
+      - sthings.baseos.node_exporter
+    varsFile:
+      - manage_filesystem+-true
+      - update_packages+-true
+      - vm_hostname+-snapshot
+      # Build marker: sthings.baseos.setup writes these to /etc/sthings/build.yaml
+      # on the first run; the login banner shows them as BUILT
+      # (stuttgart-things/stuttgart-things#3439).
+      - sthings_build_source+-create-vm
+      - sthings_build_order+-snapshot-vm
+      - sthings_build_use_case+-dev
+      - sthings_build_lab+-labda
+      - sthings_build_management_cluster+-machinery
+      # How it was built, and where the management cluster lives (each lab
+      # builds its own VMs: machinery in LabDA, machinery-labul in LabUL).
+      - sthings_build_method+-crossplane
+      - sthings_build_management_lab+-labda
+      # The dev plays hard-code the user sthings.
+      - ansible_user+-sthings
+      # LVM split for a developer machine (sthings.baseos.setup ->
+      # manage_filesystem): / and /home as % of the VG, /var takes the rest.
+      # setup's default (/ 35%, /home 15%) left dev4-vm a 15 GB /home for
+      # repos, Go cache, nvm and npm, next to a 48 GB /var
+      # (stuttgart-things/stuttgart-things#3439). Docker and kind images stay
+      # on /var. large (100 GB): / 20, /home 40, /var ~37 GB.
+      - lvm_root_sizing+-20%
+      - lvm_home_sizing+-40%
+      - golang_version+-1.27.3
+      # The kind use case's vars: CNI on, no rebuild, kubeconfig on the VM IP.
+      - kind_cluster_name+-dev
+      - install_kind+-true
+      - create_kind_cluster+-true
+      - count_controlplane_nodes+-1
+      - count_worker_nodes+-3
+      - rebuild_kind_cluster+-false
+      - enable_ingress_ports+-true
+      - update_kubeconfig_ip+-true
+      - fetch_kubeconfig+-false
+      - disableDefaultCNI+-false
+      - kubeProxyMode+-iptables
+---
+# This dev VM in the nightly dev-maintenance list (clusters/labda/vsphere/
+# machinery-xrs/dev-machines.yaml, stuttgart-things/stuttgart-things#3439):
+# Dagger kept at the latest release, disks checked and pitched to homerun2.
+# The list is read on the management cluster the order is on (LabUL:
+# clusters/labul/proxmox/machinery-labul-xrs/scheduledrun-dev-maintenance.yaml).
+# Off the list: kubectl delete environmentconfig dev-machine-snapshot.
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: dev-machine-snapshot
+  labels:
+    stuttgart-things.com/dev-machine: "true"
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+data:
+  host: snapshot.tiab.labda.sva.de
+  lab: labda

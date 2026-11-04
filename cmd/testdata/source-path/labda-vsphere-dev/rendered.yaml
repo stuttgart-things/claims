@@ -1,0 +1,104 @@
+apiVersion: resources.stuttgart-things.com/v1alpha1
+kind: NativeVsphereVM
+metadata:
+  name: snapshot-vm
+  namespace: default
+  annotations:
+    stuttgart-things.com/management-cluster: machinery
+    stuttgart-things.com/source-path: clusters/labda/vsphere/machinery-orders-xrs/snapshot.yaml
+    stuttgart-things.com/requested-by: user:default/template-check
+    stuttgart-things.com/owner: user:default/template-check
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  environmentConfig: labda
+  vm:
+    name: snapshot
+    cpu: '8'
+    ram: '16384'
+    disk: '100'
+    tagsPolicy: Merge
+  ansible:
+    enabled: true
+    pipelineNamespace: tekton-ci
+    crossplaneProviderConfig: in-cluster
+    vaultSecretName: vault-devvm-dotfiles-reader
+    playbooks:
+    - sthings.baseos.setup
+    - sthings.baseos.binaries
+    - sthings.baseos.ansible
+    - sthings.baseos.golang
+    - sthings.baseos.pre_commit
+    - sthings.baseos.semantic_release
+    - sthings.container.docker
+    - sthings.container.tools
+    - sthings.container.nerdctl
+    - sthings.container.podman
+    - sthings.baseos.vhs
+    - sthings.baseos.reboot_vm
+    - sthings.baseos.claude_code
+    - sthings.baseos.starship
+    - sthings.baseos.tmux
+    - sthings.baseos.shell_tools
+    - sthings.baseos.dotfiles
+    - sthings.baseos.dev_config
+    - sthings.container.kind
+    - sthings.baseos.node_exporter
+    varsFile:
+    - manage_filesystem+-true
+    - update_packages+-true
+    - vm_hostname+-snapshot
+    - sthings_build_source+-create-vm
+    - sthings_build_order+-snapshot-vm
+    - sthings_build_use_case+-dev
+    - sthings_build_lab+-labda
+    - sthings_build_management_cluster+-machinery
+    - sthings_build_method+-crossplane
+    - sthings_build_management_lab+-labda
+    - ansible_user+-sthings
+    - lvm_root_sizing+-20%
+    - lvm_home_sizing+-40%
+    - golang_version+-1.27.3
+    - kind_cluster_name+-dev
+    - install_kind+-true
+    - create_kind_cluster+-true
+    - count_controlplane_nodes+-1
+    - count_worker_nodes+-3
+    - rebuild_kind_cluster+-false
+    - enable_ingress_ports+-true
+    - update_kubeconfig_ip+-true
+    - fetch_kubeconfig+-false
+    - disableDefaultCNI+-false
+    - kubeProxyMode+-iptables
+---
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: dev-machine-snapshot
+  labels:
+    stuttgart-things.com/dev-machine: 'true'
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+data:
+  host: snapshot.tiab.labda.sva.de
+  lab: labda
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: host-snapshot
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+  annotations:
+    stuttgart-things.com/target-path: clusters/labda/vsphere/sthings-infra/monitoring/host-snapshot.yaml
+spec:
+  jobName: host-exporters
+  scrapeInterval: '30s'
+  scrapeTimeout: '10s'
+  staticConfigs:
+  - labels:
+      role: dev
+      lab: labda
+      host: snapshot.tiab.labda.sva.de
+    targets:
+    - snapshot.tiab.labda.sva.de:9100

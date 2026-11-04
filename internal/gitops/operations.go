@@ -33,7 +33,10 @@ type Config struct {
 
 // New creates a GitOps instance for an existing repo
 func New(repoPath string, user, token string) (*GitOps, error) {
-	repo, err := git.PlainOpen(repoPath)
+	// EnableDotGitCommonDir: a `git worktree` checkout keeps its objects in
+	// the main repository's .git (commondir); without it every object lookup
+	// fails with "object not found".
+	repo, err := git.PlainOpenWithOptions(repoPath, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
 	if err != nil {
 		return nil, fmt.Errorf("opening repository: %w", err)
 	}

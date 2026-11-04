@@ -26,6 +26,7 @@ var (
 	interactive    bool
 	nonInteractive bool
 	fileMode       string
+	layoutName     string
 
 	// Git flags
 	gitCommit       bool
@@ -70,6 +71,7 @@ func init() {
 	renderCmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Force interactive mode")
 	renderCmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Force non-interactive mode")
 	renderCmd.Flags().StringVar(&fileMode, "file-mode", "overwrite", "File write mode: overwrite (default) or append")
+	renderCmd.Flags().StringVar(&layoutName, "layout", "", "Repository layout: source-path writes every document to the path its stuttgart-things.com/source-path or target-path annotation names, relative to --output-dir as the repository root; appends to a kustomization.yaml next to it; no registry; PR conventions of the Backstage templates")
 
 	// Git flags
 	renderCmd.Flags().BoolVar(&gitCommit, "git-commit", false, "Commit rendered files to git")
@@ -119,6 +121,7 @@ func runRender(cmd *cobra.Command, args []string) {
 		SingleFile:       singleFile,
 		DryRun:           dryRun,
 		FileMode:         fileMode,
+		Layout:           layoutName,
 	}
 
 	// Build git config if any git flags are set
@@ -155,6 +158,11 @@ func runRender(cmd *cobra.Command, args []string) {
 	} else {
 		// Auto-detect: interactive if TTY, non-interactive otherwise
 		config.Interactive = isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
+	}
+
+	if err := validateLayout(config); err != nil {
+		fmt.Println(errorStyle.Render(err.Error()))
+		os.Exit(1)
 	}
 
 	var err error

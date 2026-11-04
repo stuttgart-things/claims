@@ -1,0 +1,36 @@
+apiVersion: resources.stuttgart-things.com/v1alpha1
+kind: NativeVsphereVM
+metadata:
+  name: snapshot-vm
+  namespace: default
+  annotations:
+    stuttgart-things.com/management-cluster: machinery
+    stuttgart-things.com/source-path: clusters/labda/vsphere/machinery-orders-xrs/snapshot.yaml
+    stuttgart-things.com/requested-by: user:default/template-check
+    stuttgart-things.com/owner: user:default/template-check
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  environmentConfig: labda
+  vm:
+    name: snapshot
+    cpu: '8'
+    ram: '16384'
+    disk: '100'
+    tagsPolicy: Merge
+  ansible:
+    enabled: true
+    pipelineNamespace: tekton-ci
+    crossplaneProviderConfig: in-cluster
+    playbooks:
+    - sthings.baseos.setup
+    varsFile:
+    - manage_filesystem+-true
+    - update_packages+-true
+    - vm_hostname+-snapshot
+    - sthings_build_source+-create-vm
+    - sthings_build_order+-snapshot-vm
+    - sthings_build_use_case+-baseos
+    - sthings_build_lab+-labda
+    - sthings_build_management_cluster+-machinery
+    - sthings_build_method+-crossplane
+    - sthings_build_management_lab+-labda
