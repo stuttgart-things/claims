@@ -1,3 +1,10 @@
+# [0.18.0](https://github.com/stuttgart-things/claims/compare/v0.17.0...v0.18.0) (2026-11-04)
+
+
+### Features
+
+* **delete:** delete an XR in an *-xrs directory, file first (delete-claim/<name> PR) ([#99](https://github.com/stuttgart-things/claims/issues/99)) ([e203215](https://github.com/stuttgart-things/claims/commit/e2032150ed054febeeb7660a53b659c87eff9f0b)), closes [#93](https://github.com/stuttgart-things/claims/issues/93)
+
 # [0.17.0](https://github.com/stuttgart-things/claims/compare/v0.16.0...v0.17.0) (2026-11-04)
 
 
