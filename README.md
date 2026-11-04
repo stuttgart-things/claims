@@ -412,6 +412,47 @@ claims render --non-interactive --layout source-path -o ~/projects/stuttgart-thi
 
 Start from an up-to-date `main`: the branch is created from the current HEAD.
 
+### delete: XRs in `*-xrs` directories
+
+A claim (XR) that lives in an `*-xrs` directory of the fleet repository (`clusters/<lab>/<infra>/<x>-xrs/`, e.g. the machinery orders) is deleted **file first**, the same way as Backstage's `request-claim-deletion` / `delete-claim` (see the repo's `clusters/labda/vsphere/machinery-xrs/README.md`):
+
+1. `claims delete` removes the claim's file, the run-once `ScheduledRun`s that apply to it (`stuttgart-things.com/applies`) and their `kustomization.yaml` entries (orders directories have none), on the branch `delete-claim/<name>`, and opens the PR `Delete claim: <Kind>/<name>` with the label `delete-claim`.
+2. The fleet repository's `pr-claim-delete.yaml` gates that PR (`hack/claim-deletion.py verify-pr`).
+3. After the merge, `delete-claim-xr.yaml` waits for Flux and deletes the object on the management cluster.
+
+`claims` never deletes anything on a cluster. It applies the rules of `hack/claim-deletion.py` before it writes anything:
+- exactly one XR in the file
+- the claim's `stuttgart-things.com/source-path` is the file itself
+- a path inside an `*-xrs` directory
+- no ClusterStack
+- each removed file listed exactly once in `kustomization.yaml`
+
+```bash
+cd ~/projects/stuttgart-things && git checkout main && git pull
+
+# by kind + name (searched in all *-xrs directories) ...
+claims delete --kind NativeVsphereVM --name dev7-vm --reason "project ended" --dry-run
+claims delete --kind NativeVsphereVM --name dev7-vm --reason "project ended" --create-pr
+
+# ... or by the file (its source-path)
+claims delete --source-path clusters/labda/vsphere/machinery-orders-xrs/dev7.yaml --create-pr
+
+# interactive: pick from the *-xrs claims (automatic in a repo without claims/registry.yaml)
+claims delete --xr
+```
+
+| Flag | Description |
+|------|-------------|
+| `--kind`, `--name`, `--namespace` | The XR (namespace default `default`); kind is optional when the name is unique |
+| `--source-path` | The XR's file instead of kind/name |
+| `--reason` | Shown in the PR body |
+| `--requested-by` | Shown in the PR body (default: the git user) |
+| `--create-pr` | Commit, push `delete-claim/<name>` and open the PR (needs `GIT_USER`/`GIT_TOKEN` and `gh`) |
+| `--git-repo-url` | Work on a fresh clone instead of the local checkout |
+| `--dry-run` | Show file, runs, kustomization entries, branch and title |
+
+Without `--create-pr` the files are only removed locally. `--git-branch` may only name `delete-claim/...`. In a local checkout you must be on `main` (the PR base): the gate accepts nothing but the claim's removal on top of it.
+
 ### encrypt
 
 Create SOPS-encrypted Kubernetes Secrets using age encryption. Fetches a template from the API, collects secret values, generates a K8s Secret YAML, encrypts it with SOPS, and optionally commits via Git PR.
@@ -624,6 +665,7 @@ task test-gitops
 │   ├── delete_noninteractive.go # Non-interactive delete
 │   ├── delete_git.go          # Git operations for delete
 │   ├── delete_types.go        # Delete type definitions
+│   ├── delete_xr.go           # XR deletion in *-xrs directories (delete-claim/<name> PR)
 │   ├── apiauth.go             # Shared --api-token / --api-oidc-* flags, API client factory
 │   ├── encrypt.go             # Encrypt command and flags
 │   ├── encrypt_interactive.go # Interactive encrypt flow (SOPS)
