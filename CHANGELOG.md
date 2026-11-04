@@ -1,3 +1,10 @@
+# [0.19.0](https://github.com/stuttgart-things/claims/compare/v0.18.0...v0.19.0) (2026-11-04)
+
+
+### Features
+
+* **change:** claims change -- resize a VM claim via dispatch-change-claim.yaml ([#100](https://github.com/stuttgart-things/claims/issues/100)) ([7d3bb23](https://github.com/stuttgart-things/claims/commit/7d3bb23199fa8dc3af46ba6a9b4fee265cc66eba)), closes [#94](https://github.com/stuttgart-things/claims/issues/94)
+
 # [0.18.0](https://github.com/stuttgart-things/claims/compare/v0.17.0...v0.18.0) (2026-11-04)
 
 
