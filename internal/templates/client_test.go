@@ -275,7 +275,7 @@ func TestAuthErrorMessages(t *testing.T) {
 		want   []string
 	}{
 		{http.StatusUnauthorized, []string{"API returned 401", `{"error":"denied"}`, "CLAIM_API_TOKEN", "--api-token", "CLAIM_API_OIDC_TOKEN_URL", "CLAIM_API_OIDC_CLIENT_ID", "CLAIM_API_OIDC_CLIENT_SECRET"}},
-		{http.StatusForbidden, []string{"API returned 403", "role", "CLAIM_API_TOKEN"}},
+		{http.StatusForbidden, []string{"API returned 403", "role", "claims whoami"}},
 	}
 	for _, tt := range tests {
 		t.Run(http.StatusText(tt.status), func(t *testing.T) {
@@ -298,7 +298,7 @@ func TestAuthErrorMessages(t *testing.T) {
 			}
 
 			_, err = c.FetchTemplates()
-			if err == nil || !strings.Contains(err.Error(), "CLAIM_API_TOKEN") {
+			if err == nil || !strings.Contains(err.Error(), tt.want[2]) {
 				t.Errorf("FetchTemplates error missing hint: %v", err)
 			}
 		})

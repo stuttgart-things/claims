@@ -42,6 +42,9 @@ go build -o claims .
 | `claims encrypt` | Create a SOPS-encrypted Kubernetes Secret via Git PR |
 | `claims delete` | Delete a claim via Git PR |
 | `claims list` | List claims from the registry |
+| `claims login` | Log in to claim-machinery-api with ZITADEL (device flow) |
+| `claims logout` | Forget the cached login for an API URL |
+| `claims whoami` | Show the user, roles and groups claims sends to the API |
 | `claims version` | Print version information |
 
 ### render
@@ -188,6 +191,29 @@ URL colons in `http://`, `https://`, and port numbers are handled correctly — 
 
 claim-machinery-api v0.25.0+ can require a bearer token (ZITADEL JWT) on `POST /api/v1/claim-templates/{name}/order` when the server sets `AUTH_OIDC_ISSUER`; read endpoints stay open. Authentication in `claims` is **off by default** — no `Authorization` header is sent unless one of the following is configured. It applies to `render` (interactive and non-interactive) and `encrypt`; flags take precedence over environment variables.
 
+Order of precedence: `--api-token` / `CLAIM_API_TOKEN` > OAuth2 client credentials (`CLAIM_API_OIDC_*`) > cached `claims login` for the API URL.
+
+**Interactive login** (humans) — OAuth2 device flow against the lab ZITADEL; the tokens are cached per API URL in `~/.config/claims/credentials.json` (mode 0600, override with `CLAIMS_CREDENTIALS_FILE`) and refreshed automatically:
+
+```bash
+# --issuer / --client-id / --scope or CLAIM_API_LOGIN_ISSUER / _CLIENT_ID / _SCOPE
+claims login --api-url https://claims.example.com/claims \
+  --issuer https://zitadel.example.com \
+  --client-id 123456789012345678@claims \
+  --scope "openid profile email offline_access urn:zitadel:iam:org:project:id:<project-id>:aud urn:zitadel:iam:org:projects:roles"
+# open the printed URL, enter the code, approve
+
+claims whoami --api-url https://claims.example.com/claims    # user, roles, groups, requested_by ref
+claims render --api-url https://claims.example.com/claims    # sends the cached token
+claims logout --api-url https://claims.example.com/claims    # or --all
+```
+
+- One login per API URL: each lab may run its own ZITADEL. A second `claims login` for the same URL reuses issuer, client ID and scope of the first.
+- `--ca-file` / `CLAIM_API_LOGIN_CA_FILE` adds PEM roots for an issuer with a private CA (the labs' Vault PKI).
+- Without `offline_access` no refresh token is issued and the login ends with the access token.
+- `claims` never sets `requested_by` itself; with auth on, claim-machinery-api stamps it from the token (`user:default/<preferred_username>`), which `claims whoami` shows.
+- Setting up the ZITADEL application: see [docs/10-login.md](docs/10-login.md).
+
 **Static token** — sent as `Authorization: Bearer <token>` on every API request:
 
 ```bash
@@ -209,8 +235,8 @@ Rules:
 
 - `CLAIM_API_TOKEN` / `--api-token` wins when both a static token and client credentials are set.
 - Client credentials need token URL, client ID and client secret; a partial set is rejected with an error naming the missing variables. The scope is optional (space- or comma-separated).
-- With several `CLAIM_API_URL` endpoints the **same token is used for all of them** (one IdP for all endpoints is a known limitation).
-- A `401` from the API prints a hint naming `CLAIM_API_TOKEN` and the `CLAIM_API_OIDC_*` variables; a `403` means the token was accepted but lacks the order role.
+- With several `CLAIM_API_URL` endpoints a static token or client credentials are used for **all** of them; a cached login only for the URL it was made for.
+- A `401` from the API prints a hint naming `claims login`, `CLAIM_API_TOKEN` and the `CLAIM_API_OIDC_*` variables; a `403` means the token was accepted but lacks the order role (or the owner is outside your groups) — `claims whoami` shows what the token carries.
 - Token values are never printed or logged. Prefer environment variables over `--api-token` so the token does not end up in shell history or process listings.
 
 ### Profile-Based Template Selection

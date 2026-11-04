@@ -251,13 +251,13 @@ func TestClientCredentialsTokenEndpointFailure(t *testing.T) {
 
 func TestStatusHint(t *testing.T) {
 	h401 := apiauth.StatusHint(http.StatusUnauthorized)
-	for _, v := range []string{apiauth.EnvToken, "--api-token", apiauth.EnvOIDCTokenURL, apiauth.EnvOIDCClientID, apiauth.EnvOIDCClientSecret, apiauth.EnvOIDCScope} {
+	for _, v := range []string{"claims login", apiauth.EnvToken, "--api-token", apiauth.EnvOIDCTokenURL, apiauth.EnvOIDCClientID, apiauth.EnvOIDCClientSecret, apiauth.EnvOIDCScope} {
 		if !strings.Contains(h401, v) {
 			t.Errorf("401 hint missing %s: %s", v, h401)
 		}
 	}
 	h403 := apiauth.StatusHint(http.StatusForbidden)
-	if !strings.Contains(h403, "role") || !strings.Contains(h403, apiauth.EnvToken) {
+	if !strings.Contains(h403, "role") || !strings.Contains(h403, "claims whoami") {
 		t.Errorf("403 hint: %s", h403)
 	}
 	if apiauth.StatusHint(http.StatusInternalServerError) != "" {

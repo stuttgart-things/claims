@@ -33,8 +33,27 @@ func resolveAPIAuth() (*apiauth.Authenticator, error) {
 }
 
 // newAPIClient returns a claim-machinery-api client for baseURL that sends the
-// configured bearer token (if any). The same authenticator, and therefore the
-// same token, is used for every endpoint in CLAIM_API_URL.
+// configured bearer token. auth (token or client credentials from flags/env)
+// applies to every endpoint in CLAIM_API_URL; without it, the login cached by
+// `claims login` for baseURL is used, if any.
 func newAPIClient(baseURL string, auth *apiauth.Authenticator) *templates.Client {
+	if auth == nil {
+		auth = loginAuthFor(baseURL)
+	}
 	return templates.NewClientWithAuth(baseURL, auth)
+}
+
+// loginAuthFor returns the cached login for apiURL, or nil.
+func loginAuthFor(apiURL string) *apiauth.Authenticator {
+	store, err := apiauth.DefaultStore()
+	if err != nil {
+		warnf(fmt.Sprintf("ignoring cached logins: %v", err))
+		return nil
+	}
+	auth, err := apiauth.Resolve(apiauth.Config{}, apiURL, store, warnf)
+	if err != nil {
+		warnf(err.Error())
+		return nil
+	}
+	return auth
 }
