@@ -2,19 +2,22 @@
 // claim-machinery-api.
 //
 // Authentication is off by default: without configuration no Authorization
-// header is sent. Two modes are supported:
+// header is sent. Three modes are supported, in this order of precedence:
 //
 //   - a static bearer token (CLAIM_API_TOKEN / --api-token)
 //   - OAuth2 client credentials (CLAIM_API_OIDC_TOKEN_URL, CLAIM_API_OIDC_CLIENT_ID,
 //     CLAIM_API_OIDC_CLIENT_SECRET, optional CLAIM_API_OIDC_SCOPE), where the
 //     token is fetched once and cached in-process until it expires.
+//   - a cached interactive login (`claims login`, device flow), looked up per
+//     API URL in the credentials file and refreshed when it expires.
 //
-// The static token wins when both are configured. Token values are never
-// included in errors or log output produced by this package.
+// Token values are never included in errors or log output produced by this
+// package.
 package apiauth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -82,6 +85,7 @@ const (
 	ModeNone              Mode = "none"
 	ModeStaticToken       Mode = "static-token"
 	ModeClientCredentials Mode = "client-credentials"
+	ModeLogin             Mode = "login"
 )
 
 // Mode returns the effective mode. The static token wins over client credentials.
@@ -122,7 +126,7 @@ func (c Config) Validate() error {
 type Authenticator struct {
 	mode  Mode
 	token string             // static token
-	src   oauth2.TokenSource // cached client-credentials source
+	src   oauth2.TokenSource // client-credentials or login source
 }
 
 // New builds an Authenticator from cfg. It returns (nil, nil) when auth is
@@ -181,9 +185,48 @@ func (a *Authenticator) HTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout, Transport: a.Wrap(nil)}
 }
 
+// BearerToken returns the token that is sent to the API (fetching or
+// refreshing it if needed). Callers must not print it.
+func (a *Authenticator) BearerToken() (string, error) {
+	if a == nil {
+		return "", errors.New("no API authentication configured")
+	}
+	return a.bearer()
+}
+
+// Resolve returns the authenticator for apiURL: cfg (static token or client
+// credentials, from flags/env) wins; otherwise a login cached in store for
+// apiURL is used; otherwise nil (no auth). A store that cannot be read is
+// reported through warn and treated as "no login".
+func Resolve(cfg Config, apiURL string, store *Store, warn func(string)) (*Authenticator, error) {
+	if cfg.Mode() != ModeNone || store == nil {
+		return New(cfg, nil)
+	}
+	cred, ok, err := store.Get(apiURL)
+	if err != nil {
+		warn(fmt.Sprintf("ignoring cached logins: %v", err))
+		return nil, nil
+	}
+	if !ok {
+		return nil, nil
+	}
+	hc, err := LoginHTTPClient(cred.CAFile)
+	if err != nil {
+		return nil, fmt.Errorf("login for %s: %w", cred.APIURL, err)
+	}
+	return NewLogin(store, cred, hc), nil
+}
+
 func (a *Authenticator) bearer() (string, error) {
-	if a.mode == ModeStaticToken {
+	switch a.mode {
+	case ModeStaticToken:
 		return a.token, nil
+	case ModeLogin:
+		tok, err := a.src.Token()
+		if err != nil {
+			return "", err // *LoginExpiredError, already says what to do
+		}
+		return tok.AccessToken, nil
 	}
 	tok, err := a.src.Token()
 	if err != nil {
@@ -217,12 +260,11 @@ func StatusHint(statusCode int) string {
 	switch statusCode {
 	case http.StatusUnauthorized:
 		return fmt.Sprintf("claim-machinery-api requires authentication (or rejected the token): "+
-			"set %s (--api-token) or the OIDC client credentials %s, %s, %s and optionally %s",
+			"run `claims login`, or set %s (--api-token) or the OIDC client credentials %s, %s, %s and optionally %s",
 			EnvToken, EnvOIDCTokenURL, EnvOIDCClientID, EnvOIDCClientSecret, EnvOIDCScope)
 	case http.StatusForbidden:
-		return fmt.Sprintf("claim-machinery-api accepted the token but denied the request (missing order role?): "+
-			"check the identity behind %s or %s/%s",
-			EnvToken, EnvOIDCClientID, EnvOIDCClientSecret)
+		return "claim-machinery-api accepted the token but denied the request " +
+			"(missing order role, or an owner outside your groups?): `claims whoami` shows the roles in your token"
 	default:
 		return ""
 	}
