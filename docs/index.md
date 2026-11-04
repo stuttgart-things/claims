@@ -71,6 +71,8 @@ claims encrypt --non-interactive \
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
 | `CLAIM_API_URL` | API base URL | `http://localhost:8080` |
+| `CLAIM_API_TOKEN` | Static bearer token for claim-machinery-api (off when unset) | - |
+| `CLAIM_API_OIDC_TOKEN_URL` / `_CLIENT_ID` / `_CLIENT_SECRET` / `_SCOPE` | OAuth2 client credentials for claim-machinery-api; token cached until expiry (see README "API Authentication") | - |
 | `SOPS_AGE_RECIPIENTS` | age public key for SOPS encryption | - |
 | `GIT_USER` | Git username for push operations | - |
 | `GIT_TOKEN` | Git token/password for push operations | - |

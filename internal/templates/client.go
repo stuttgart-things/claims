@@ -3,11 +3,16 @@ package templates
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/stuttgart-things/claims/internal/apiauth"
 )
+
+const defaultTimeout = 30 * time.Second
 
 // Client is the API client for claim templates
 type Client struct {
@@ -20,8 +25,17 @@ func NewClient(baseURL string) *Client {
 	return &Client{
 		BaseURL: baseURL,
 		HTTPClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: defaultTimeout,
 		},
+	}
+}
+
+// NewClientWithAuth creates a template API client that sends the bearer token
+// from auth on every request. A nil auth behaves like NewClient (no header).
+func NewClientWithAuth(baseURL string, auth *apiauth.Authenticator) *Client {
+	return &Client{
+		BaseURL:    baseURL,
+		HTTPClient: auth.HTTPClient(defaultTimeout),
 	}
 }
 
@@ -42,8 +56,7 @@ func (c *Client) FetchTemplates() ([]ClaimTemplate, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API returned %d: %s", resp.StatusCode, string(body))
+		return nil, statusError(resp)
 	}
 
 	var list ClaimTemplateList
@@ -70,8 +83,7 @@ func (c *Client) RenderTemplate(templateName string, params map[string]interface
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("API returned %d: %s", resp.StatusCode, string(body))
+		return "", statusError(resp)
 	}
 
 	var orderResp OrderResponse
@@ -80,4 +92,15 @@ func (c *Client) RenderTemplate(templateName string, params map[string]interface
 	}
 
 	return orderResp.Rendered, nil
+}
+
+// statusError builds the error for a non-200 response. 401/403 responses get
+// a hint naming the auth settings (CLAIM_API_TOKEN / CLAIM_API_OIDC_*).
+func statusError(resp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	msg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, bytes.TrimSpace(body))
+	if hint := apiauth.StatusHint(resp.StatusCode); hint != "" {
+		return fmt.Errorf("%s\n%s", msg, hint)
+	}
+	return errors.New(msg)
 }

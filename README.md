@@ -53,6 +53,11 @@ claims render [flags]
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--api-url` | `-a` | API URL (default: `$CLAIM_API_URL` or `http://localhost:8080`) |
+| `--api-token` | | Bearer token for claim-machinery-api (default: `$CLAIM_API_TOKEN`); see [API Authentication](#api-authentication) |
+| `--api-oidc-token-url` | | OIDC token endpoint for client credentials (default: `$CLAIM_API_OIDC_TOKEN_URL`) |
+| `--api-oidc-client-id` | | OIDC client ID (default: `$CLAIM_API_OIDC_CLIENT_ID`) |
+| `--api-oidc-client-secret` | | OIDC client secret (default: `$CLAIM_API_OIDC_CLIENT_SECRET`) |
+| `--api-oidc-scope` | | OIDC scope(s), space- or comma-separated (default: `$CLAIM_API_OIDC_SCOPE`) |
 | `--templates` | `-t` | Templates to render (comma-separated or repeated) |
 | `--params` | `-p` | Parameters as key=value pairs (comma-separated or repeated) |
 | `--params-file` | `-f` | YAML file with templates and parameters for batch rendering |
@@ -178,6 +183,35 @@ CLAIM_API_URL=http://dev-api:8080:http://staging-api:8080 \
 ```
 
 URL colons in `http://`, `https://`, and port numbers are handled correctly — only bare `:` between URLs acts as a separator.
+
+### API Authentication
+
+claim-machinery-api v0.25.0+ can require a bearer token (ZITADEL JWT) on `POST /api/v1/claim-templates/{name}/order` when the server sets `AUTH_OIDC_ISSUER`; read endpoints stay open. Authentication in `claims` is **off by default** — no `Authorization` header is sent unless one of the following is configured. It applies to `render` (interactive and non-interactive) and `encrypt`; flags take precedence over environment variables.
+
+**Static token** — sent as `Authorization: Bearer <token>` on every API request:
+
+```bash
+export CLAIM_API_TOKEN="$(cat ~/.config/claims/token)"   # or --api-token
+claims render --non-interactive -f params.yaml
+```
+
+**OAuth2 client credentials** (pipelines) — the token is fetched from the IdP once and cached in-process until it expires:
+
+```bash
+export CLAIM_API_OIDC_TOKEN_URL=https://zitadel.example.com/oauth/v2/token   # --api-oidc-token-url
+export CLAIM_API_OIDC_CLIENT_ID=claims-ci                                    # --api-oidc-client-id
+export CLAIM_API_OIDC_CLIENT_SECRET=...                                      # --api-oidc-client-secret
+export CLAIM_API_OIDC_SCOPE="openid urn:zitadel:iam:org:project:id:<id>:aud" # optional, --api-oidc-scope
+claims render --non-interactive -f params.yaml
+```
+
+Rules:
+
+- `CLAIM_API_TOKEN` / `--api-token` wins when both a static token and client credentials are set.
+- Client credentials need token URL, client ID and client secret; a partial set is rejected with an error naming the missing variables. The scope is optional (space- or comma-separated).
+- With several `CLAIM_API_URL` endpoints the **same token is used for all of them** (one IdP for all endpoints is a known limitation).
+- A `401` from the API prints a hint naming `CLAIM_API_TOKEN` and the `CLAIM_API_OIDC_*` variables; a `403` means the token was accepted but lacks the order role.
+- Token values are never printed or logged. Prefer environment variables over `--api-token` so the token does not end up in shell history or process listings.
 
 ### Profile-Based Template Selection
 
@@ -363,6 +397,11 @@ claims encrypt [flags]
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--api-url` | `-a` | API URL (default: `$CLAIM_API_URL` or `http://localhost:8080`) |
+| `--api-token` | | Bearer token for claim-machinery-api (default: `$CLAIM_API_TOKEN`); see [API Authentication](#api-authentication) |
+| `--api-oidc-token-url` | | OIDC token endpoint for client credentials (default: `$CLAIM_API_OIDC_TOKEN_URL`) |
+| `--api-oidc-client-id` | | OIDC client ID (default: `$CLAIM_API_OIDC_CLIENT_ID`) |
+| `--api-oidc-client-secret` | | OIDC client secret (default: `$CLAIM_API_OIDC_CLIENT_SECRET`) |
+| `--api-oidc-scope` | | OIDC scope(s), space- or comma-separated (default: `$CLAIM_API_OIDC_SCOPE`) |
 | `--template` | `-t` | Template name to use |
 | `--name` | | Secret name |
 | `--namespace` | | Secret namespace |
@@ -456,6 +495,11 @@ The `claims render` command follows an interactive workflow:
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
 | `CLAIM_API_URL` | API base URL (colon-separated for multiple endpoints) | `http://localhost:8080` |
+| `CLAIM_API_TOKEN` | Static bearer token for claim-machinery-api (wins over client credentials) | - (no auth) |
+| `CLAIM_API_OIDC_TOKEN_URL` | OIDC token endpoint for client-credentials auth | - |
+| `CLAIM_API_OIDC_CLIENT_ID` | OIDC client ID for client-credentials auth | - |
+| `CLAIM_API_OIDC_CLIENT_SECRET` | OIDC client secret for client-credentials auth | - |
+| `CLAIM_API_OIDC_SCOPE` | OIDC scope(s), space- or comma-separated (optional) | - |
 | `GIT_USER` | Git username for push operations | - |
 | `GIT_TOKEN` | Git token/password for push operations | - |
 | `GITHUB_TOKEN` | GitHub token (fallback for `GIT_TOKEN`) | - |
@@ -525,6 +569,7 @@ task test-gitops
 |---------|-------------|
 | `cmd/` | Output logic, review functionality |
 | `internal/templates/` | API client with mocked HTTP server |
+| `internal/apiauth/` | Bearer-token / client-credentials auth against a fake token endpoint |
 | `internal/gitops/` | Git operations, branch management, auth |
 | `internal/params/` | Parameter file parsing, inline params |
 | `internal/sops/` | SOPS encryption, K8s Secret YAML generation |
@@ -553,6 +598,7 @@ task test-gitops
 │   ├── delete_noninteractive.go # Non-interactive delete
 │   ├── delete_git.go          # Git operations for delete
 │   ├── delete_types.go        # Delete type definitions
+│   ├── apiauth.go             # Shared --api-token / --api-oidc-* flags, API client factory
 │   ├── encrypt.go             # Encrypt command and flags
 │   ├── encrypt_interactive.go # Interactive encrypt flow (SOPS)
 │   ├── encrypt_noninteractive.go # Non-interactive encrypt
@@ -566,6 +612,9 @@ task test-gitops
 │   │   ├── types.go           # API data models
 │   │   ├── client.go          # HTTP client for claim-machinery API
 │   │   └── client_test.go     # Client unit tests
+│   ├── apiauth/
+│   │   ├── apiauth.go         # Optional bearer-token / OIDC client-credentials auth
+│   │   └── apiauth_test.go    # Auth tests (fake token endpoint)
 │   ├── gitops/
 │   │   ├── operations.go      # Git operations (clone, add, commit, push)
 │   │   ├── operations_test.go # Git operations tests

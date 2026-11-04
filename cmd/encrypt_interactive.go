@@ -32,7 +32,7 @@ func runEncryptInteractive(config *EncryptConfig) error {
 	fmt.Printf("\nConnecting to API: %s\n\n", config.APIUrl)
 
 	// 3. Fetch templates from API
-	client := templates.NewClient(config.APIUrl)
+	client := newAPIClient(config.APIUrl, config.Auth)
 	templateList, err := client.FetchTemplates()
 	if err != nil {
 		return fmt.Errorf("fetching templates: %w", err)

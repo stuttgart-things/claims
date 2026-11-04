@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/stuttgart-things/claims/internal/apiauth"
 )
 
 func TestNewClient(t *testing.T) {
@@ -194,5 +197,119 @@ func TestRenderTemplateConnectionError(t *testing.T) {
 
 	if err == nil {
 		t.Error("expected connection error, got nil")
+	}
+}
+
+func newOrderServer(t *testing.T, status int, seen *[]string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*seen = append(*seen, r.Header.Get("Authorization"))
+		if status != http.StatusOK {
+			if status == http.StatusUnauthorized {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="claim-machinery-api"`)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"error":"denied"}`))
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			_ = json.NewEncoder(w).Encode(ClaimTemplateList{})
+		default:
+			_ = json.NewEncoder(w).Encode(OrderResponse{Rendered: "kind: X"})
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestAuthHeaderAbsentByDefault(t *testing.T) {
+	var seen []string
+	srv := newOrderServer(t, http.StatusOK, &seen)
+	for _, c := range []*Client{NewClient(srv.URL), NewClientWithAuth(srv.URL, nil)} {
+		if _, err := c.FetchTemplates(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.RenderTemplate("vm", map[string]interface{}{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, h := range seen {
+		if h != "" {
+			t.Errorf("request %d: unexpected Authorization header %q", i, h)
+		}
+	}
+}
+
+func TestAuthHeaderWithToken(t *testing.T) {
+	auth, err := apiauth.New(apiauth.Config{Token: "tok-123"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen []string
+	srv := newOrderServer(t, http.StatusOK, &seen)
+	c := NewClientWithAuth(srv.URL, auth)
+	if c.HTTPClient.Timeout != defaultTimeout {
+		t.Errorf("timeout = %v, want %v", c.HTTPClient.Timeout, defaultTimeout)
+	}
+	if _, err := c.FetchTemplates(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.RenderTemplate("vm", map[string]interface{}{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 2 {
+		t.Fatalf("expected 2 requests, got %d", len(seen))
+	}
+	for i, h := range seen {
+		if h != "Bearer tok-123" {
+			t.Errorf("request %d: Authorization = %q", i, h)
+		}
+	}
+}
+
+func TestAuthErrorMessages(t *testing.T) {
+	tests := []struct {
+		status int
+		want   []string
+	}{
+		{http.StatusUnauthorized, []string{"API returned 401", `{"error":"denied"}`, "CLAIM_API_TOKEN", "--api-token", "CLAIM_API_OIDC_TOKEN_URL", "CLAIM_API_OIDC_CLIENT_ID", "CLAIM_API_OIDC_CLIENT_SECRET"}},
+		{http.StatusForbidden, []string{"API returned 403", "role", "CLAIM_API_TOKEN"}},
+	}
+	for _, tt := range tests {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			auth, _ := apiauth.New(apiauth.Config{Token: "very-secret-token"}, nil)
+			var seen []string
+			srv := newOrderServer(t, tt.status, &seen)
+			c := NewClientWithAuth(srv.URL, auth)
+
+			_, err := c.RenderTemplate("vm", map[string]interface{}{})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("error missing %q:\n%s", w, err)
+				}
+			}
+			if strings.Contains(err.Error(), "very-secret-token") {
+				t.Errorf("error leaks the token:\n%s", err)
+			}
+
+			_, err = c.FetchTemplates()
+			if err == nil || !strings.Contains(err.Error(), "CLAIM_API_TOKEN") {
+				t.Errorf("FetchTemplates error missing hint: %v", err)
+			}
+		})
+	}
+}
+
+func TestNonAuthErrorHasNoHint(t *testing.T) {
+	var seen []string
+	srv := newOrderServer(t, http.StatusInternalServerError, &seen)
+	_, err := NewClient(srv.URL).FetchTemplates()
+	if err == nil || strings.Contains(err.Error(), "CLAIM_API_TOKEN") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }

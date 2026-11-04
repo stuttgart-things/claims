@@ -1,10 +1,15 @@
 package cmd
 
+import "github.com/stuttgart-things/claims/internal/apiauth"
+
 // RenderConfig holds configuration for the render command
 type RenderConfig struct {
 	// API configuration
 	APIUrl  string
 	APIUrls []string // multiple endpoints parsed from CLAIM_API_URL
+	// Auth is the optional bearer-token authenticator (nil = no auth header).
+	// The same token is used for every endpoint in APIUrls.
+	Auth *apiauth.Authenticator
 
 	// Template selection
 	Templates []string

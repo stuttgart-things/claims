@@ -1,9 +1,13 @@
 package cmd
 
+import "github.com/stuttgart-things/claims/internal/apiauth"
+
 // EncryptConfig holds configuration for the encrypt command
 type EncryptConfig struct {
 	// API configuration
 	APIUrl string
+	// Auth is the optional bearer-token authenticator (nil = no auth header).
+	Auth *apiauth.Authenticator
 
 	// Template selection
 	Template string

@@ -44,7 +44,7 @@ type TemplateParams struct {
 
 // runInteractive runs the render command in interactive mode
 func runInteractive(config *RenderConfig) error {
-	client := templates.NewClient(config.APIUrl)
+	client := newAPIClient(config.APIUrl, config.Auth)
 	return runInteractiveRender(client, config)
 }
 

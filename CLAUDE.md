@@ -54,6 +54,7 @@ Commands auto-detect TTY to choose interactive vs non-interactive mode using `go
 ### Internal Packages
 
 - **`internal/templates`** - HTTP client for claim-machinery-api (`GET /api/v1/claim-templates`, `POST .../order`). Uses `NewClientWithHTTPClient()` for test injection.
+- **`internal/apiauth`** - Optional bearer-token auth for claim-machinery-api (off by default): `CLAIM_API_TOKEN`/`--api-token`, or OAuth2 client credentials `CLAIM_API_OIDC_*`/`--api-oidc-*` (token cached until expiry). Wired in via `newAPIClient()` in `cmd/apiauth.go` -> `templates.NewClientWithAuth()`; 401/403 errors carry `apiauth.StatusHint`.
 - **`internal/gitops`** - Git operations via go-git: clone, branch, commit, push. PR creation shells out to `gh` CLI. Credential resolution: flags > `GIT_USER/GIT_TOKEN` > `GITHUB_USER/GITHUB_TOKEN`.
 - **`internal/params`** - Parameter file parsing (YAML/JSON). Supports single `template:` and multi `templates:` format. Inline params parsed as `key=value`.
 - **`internal/registry`** - CRUD for `claims/registry.yaml` (tracks rendered claims as entries with metadata).
