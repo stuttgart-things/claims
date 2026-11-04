@@ -1,3 +1,10 @@
+# [0.15.0](https://github.com/stuttgart-things/claims/compare/v0.14.3...v0.15.0) (2026-11-04)
+
+
+### Features
+
+* **render:** --layout source-path -- the order names its files ([#95](https://github.com/stuttgart-things/claims/issues/95)) ([6b151a6](https://github.com/stuttgart-things/claims/commit/6b151a6483f3c20b660bdd41968f15a87be7cf3d)), closes [#92](https://github.com/stuttgart-things/claims/issues/92)
+
 ## [0.14.3](https://github.com/stuttgart-things/claims/compare/v0.14.2...v0.14.3) (2026-10-24)
 
 
