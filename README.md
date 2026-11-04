@@ -41,6 +41,7 @@ go build -o claims .
 | `claims render` | Interactively render a claim template via API |
 | `claims encrypt` | Create a SOPS-encrypted Kubernetes Secret via Git PR |
 | `claims delete` | Delete a claim via Git PR |
+| `claims change` | Resize a VM claim via a change-claim PR |
 | `claims list` | List claims from the registry |
 | `claims login` | Log in to claim-machinery-api with ZITADEL (device flow) |
 | `claims logout` | Forget the cached login for an API URL |
@@ -452,6 +453,35 @@ claims delete --xr
 | `--dry-run` | Show file, runs, kustomization entries, branch and title |
 
 Without `--create-pr` the files are only removed locally. `--git-branch` may only name `delete-claim/...`. In a local checkout you must be on `main` (the PR base): the gate accepts nothing but the claim's removal on top of it.
+
+### change: resize a VM claim
+
+`claims change` resizes a VM claim (`NativeVsphereVM`, `NativeProxmoxVM`) in an `*-xrs` directory. It is a thin wrapper around the fleet repository's `dispatch-change-claim.yaml`, the workflow behind Backstage's `request-claim-change`. The rules stay in `hack/claim-change.py`:
+- cpu, memory and disk come from create-vm's size table
+- a disk never shrinks
+- only the size may change
+
+claims resolves the claim, starts the workflow with the same inputs, waits for it and prints the PR `change-claim/<name>`, which `pr-claim-change.yaml` checks. Merging the PR applies the size.
+
+```bash
+cd ~/projects/stuttgart-things     # resolves --name to kind and source-path
+
+claims change --name dev7-vm --size xlarge --dry-run
+claims change --name dev7-vm --size xlarge --reboot evening --reason "builds run out of memory"
+claims change --source-path clusters/labda/vsphere/machinery-orders-xrs/dev7.yaml --size xlarge --reboot 2026-11-05T20:00
+claims change -i                   # pick VM, size and reboot window
+```
+
+| Flag | Description |
+|------|-------------|
+| `--kind`, `--name`, `--namespace`, `--source-path` | The VM claim. Outside a checkout, give `--kind`, `--name` and `--source-path` |
+| `--size` | New size: `small`, `medium`, `large` or `xlarge` (checked by the workflow) |
+| `--reboot` | When the one-shot run applies the resize in the guest: `evening` (19-22 Europe/Berlin, default), `now`, `none`, or an ISO-8601 time |
+| `--reason`, `--requested-by` | Shown in the PR body. `--requested-by` defaults to the git user, then the gh user |
+| `--repo`, `--ref` | Fleet repository (default: the checkout's) and the branch the workflow runs on (default `main`) |
+| `--dry-run`, `--no-wait` | Show the inputs only; or start the workflow and return without waiting |
+
+When the workflow refuses the change, for example with an unknown size, a size the VM already has, or a kind it does not resize, claims prints the workflow's `::error::` lines. Needs `gh`, logged in with permission to run workflows.
 
 ### encrypt
 
