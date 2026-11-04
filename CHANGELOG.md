@@ -1,3 +1,10 @@
+# [0.17.0](https://github.com/stuttgart-things/claims/compare/v0.16.0...v0.17.0) (2026-11-04)
+
+
+### Features
+
+* **auth:** claims login/logout/whoami -- ZITADEL device flow, cached per API URL ([#98](https://github.com/stuttgart-things/claims/issues/98)) ([ab98ea3](https://github.com/stuttgart-things/claims/commit/ab98ea390961e3f082c38cc1aeb53b6f88046123)), closes [#91](https://github.com/stuttgart-things/claims/issues/91)
+
 # [0.16.0](https://github.com/stuttgart-things/claims/compare/v0.15.0...v0.16.0) (2026-11-04)
 
 
