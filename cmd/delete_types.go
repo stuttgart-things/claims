@@ -12,6 +12,11 @@ type DeleteConfig struct {
 
 	GitConfig *GitConfig
 	PRConfig  *PRConfig
+
+	// XR selects an XR deletion in an *-xrs directory (claims#93).
+	XR *DeleteXRConfig
+	// PickXR forces the interactive XR selection.
+	PickXR bool
 }
 
 // DeleteResult holds the result of deleting a single claim

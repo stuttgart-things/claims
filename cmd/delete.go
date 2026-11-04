@@ -7,6 +7,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 	"github.com/stuttgart-things/claims/internal/banner"
+	"github.com/stuttgart-things/claims/internal/gitops"
 )
 
 var (
@@ -34,13 +35,38 @@ var (
 	// Mode flags for delete
 	deleteInteractive    bool
 	deleteNonInteractive bool
+
+	// XR deletion (claims#93)
+	deleteXR deleteXRFlags
 )
+
+type deleteXRFlags struct {
+	DeleteXRConfig
+	pick bool
+}
 
 var deleteCmd = &cobra.Command{
 	Use:   "delete",
 	Short: "Delete a claim via Git PR",
-	Long:  `Removes a Crossplane claim by deleting its directory, updating kustomization.yaml, and removing the registry entry. Creates a Git PR for the change.`,
-	Run:   runDelete,
+	Long: `Removes a Crossplane claim through a Git PR. Two layouts:
+
+XR in an *-xrs directory (clusters/<lab>/<infra>/<x>-xrs/, e.g. machinery orders):
+  name it with --kind/--name or --source-path (interactive: pick it with --xr,
+  or automatically when the repository has no claims registry). The claim's
+  file, the run-once runs that apply to it and their kustomization.yaml
+  entries are removed on the branch delete-claim/<name>, and with --create-pr
+  the PR "Delete claim: <Kind>/<name>" (label delete-claim) is opened. The
+  fleet repository's pr-claim-delete.yaml gates it; after the merge
+  delete-claim-xr.yaml deletes the object. claims never deletes anything on a
+  cluster.
+
+Registry claim (claims/<category>/<name>): removes the directory, its
+  kustomization.yaml entry and the registry.yaml entry.`,
+	Example: `  # XR: file-first deletion PR
+  claims delete --kind NativeVsphereVM --name dev7-vm --create-pr --reason "project ended"
+  claims delete --source-path clusters/labda/vsphere/machinery-orders-xrs/dev7.yaml --dry-run
+  claims delete --xr            # pick an XR interactively`,
+	Run: runDelete,
 }
 
 func init() {
@@ -69,6 +95,15 @@ func init() {
 	deleteCmd.Flags().BoolVarP(&deleteInteractive, "interactive", "i", false, "Force interactive mode")
 	deleteCmd.Flags().BoolVar(&deleteNonInteractive, "non-interactive", false, "Force non-interactive mode")
 
+	// XR flags
+	deleteCmd.Flags().StringVar(&deleteXR.Kind, "kind", "", "XR kind, e.g. NativeVsphereVM (XR deletion)")
+	deleteCmd.Flags().StringVar(&deleteXR.Name, "name", "", "XR name (metadata.name)")
+	deleteCmd.Flags().StringVar(&deleteXR.Namespace, "namespace", "default", "XR namespace")
+	deleteCmd.Flags().StringVar(&deleteXR.SourcePath, "source-path", "", "File the XR lives in (its stuttgart-things.com/source-path)")
+	deleteCmd.Flags().StringVar(&deleteXR.Reason, "reason", "", "Why the claim can go (PR body)")
+	deleteCmd.Flags().StringVar(&deleteXR.RequestedBy, "requested-by", "", "Who asks for the deletion (PR body; default: the git user)")
+	deleteCmd.Flags().BoolVar(&deleteXR.pick, "xr", false, "Pick an XR from the *-xrs directories interactively")
+
 	rootCmd.AddCommand(deleteCmd)
 }
 
@@ -81,7 +116,13 @@ func runDelete(cmd *cobra.Command, args []string) {
 		RepoURL:      deleteRepoURL,
 		RegistryPath: deleteRegistryPath,
 		DryRun:       deleteDryRun,
+		PickXR:       deleteXR.pick,
 	}
+	xr := deleteXR.DeleteXRConfig
+	if xr.RequestedBy == "" {
+		xr.RequestedBy, _ = gitops.ResolveCredentialsOptional(deleteGitUser, deleteGitToken)
+	}
+	config.XR = &xr
 
 	// Build git config
 	if deleteGitBranch != "" || deleteRepoURL != "" || deleteCreatePR {
@@ -119,9 +160,18 @@ func runDelete(cmd *cobra.Command, args []string) {
 	}
 
 	var err error
-	if config.Interactive {
+	switch {
+	case config.xrMode() && config.Interactive:
+		err = runDeleteXR(config, pickXRInteractive)
+	case config.xrMode():
+		err = runDeleteXR(config, nil)
+	case config.Interactive && (config.PickXR || xrRepo(config)):
+		err = runDeleteXR(config, pickXRInteractive)
+	case config.PickXR:
+		err = fmt.Errorf("--xr picks interactively; without a terminal name the claim with --kind/--name or --source-path")
+	case config.Interactive:
 		err = runDeleteInteractive(config)
-	} else {
+	default:
 		err = runDeleteNonInteractive(config)
 	}
 
@@ -129,4 +179,14 @@ func runDelete(cmd *cobra.Command, args []string) {
 		fmt.Println(errorStyle.Render(err.Error()))
 		os.Exit(1)
 	}
+}
+
+// xrRepo reports whether the current repository has *-xrs directories but no
+// claims registry, so an interactive delete offers XRs.
+func xrRepo(config *DeleteConfig) bool {
+	if config.RepoURL != "" {
+		return false
+	}
+	root, err := resolveRepoRoot(config)
+	return err == nil && registryMissing(root, config.RegistryPath)
 }
