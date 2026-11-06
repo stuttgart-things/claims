@@ -99,7 +99,7 @@ func runDeleteInteractive(config *DeleteConfig) error {
 		return err
 	}
 
-	fmt.Println(successStyle.Render(fmt.Sprintf("\nDeleted claim: %s", result.ResourceName)))
+	printSection(successStyle, fmt.Sprintf("Deleted claim: %s", result.ResourceName))
 
 	// Ask about git operations if not already configured
 	if config.GitConfig == nil {

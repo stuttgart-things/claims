@@ -188,7 +188,7 @@ func runRender(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 		config.APIUrl = selectedURL
-		fmt.Printf("\nConnecting to API: %s\n\n", config.APIUrl)
+		fmt.Printf("\nConnecting to API: %s\n", config.APIUrl)
 
 		err = runInteractive(config)
 	} else {

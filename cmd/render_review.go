@@ -19,11 +19,11 @@ const (
 
 // Styles for review UI
 var (
+	// No margins: lipgloss renders them as lines of spaces. Spacing comes
+	// from printSection (one blank line before every section header).
 	reviewHeaderStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("205")).
-				MarginTop(1).
-				MarginBottom(1)
+				Foreground(lipgloss.Color("205"))
 
 	resourceHeaderStyle = lipgloss.NewStyle().
 				Bold(true).
@@ -38,7 +38,8 @@ var (
 // ReviewResults displays rendered results and allows user to continue, edit, or cancel
 // Returns the chosen action, the index of the template to edit (if action is edit), and any error
 func ReviewResults(results []RenderResult) (ReviewAction, int, error) {
-	fmt.Println(reviewHeaderStyle.Render("━━━ Review Rendered Resources ━━━"))
+	printSection(reviewHeaderStyle, "━━━ Review Rendered Resources ━━━")
+	fmt.Println()
 
 	// Count successful renders
 	successCount := 0
@@ -51,7 +52,7 @@ func ReviewResults(results []RenderResult) (ReviewAction, int, error) {
 	// Display each rendered resource
 	for _, r := range results {
 		if r.Error != nil {
-			fmt.Printf("\n%s %s (ERROR: %v)\n",
+			fmt.Printf("%s %s (ERROR: %v)\n\n",
 				errorStyle.Render("✗"),
 				r.TemplateName,
 				r.Error,
@@ -167,8 +168,6 @@ func truncateYAML(content string, maxLines int) string {
 
 // ShowFullPreview displays complete YAML for a single result
 func ShowFullPreview(result RenderResult) {
-	fmt.Println(reviewHeaderStyle.Render(
-		fmt.Sprintf("━━━ Full Preview: %s ━━━", result.TemplateName),
-	))
+	printSection(reviewHeaderStyle, fmt.Sprintf("━━━ Full Preview: %s ━━━", result.TemplateName))
 	fmt.Println(yamlStyle.Render(result.Content))
 }

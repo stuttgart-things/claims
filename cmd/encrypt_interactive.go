@@ -29,7 +29,7 @@ func runEncryptInteractive(config *EncryptConfig) error {
 		return fmt.Errorf("API URL prompt: %w", err)
 	}
 	config.APIUrl = confirmedURL
-	fmt.Printf("\nConnecting to API: %s\n\n", config.APIUrl)
+	fmt.Printf("\nConnecting to API: %s\n", config.APIUrl)
 
 	// 3. Fetch templates from API
 	client := newAPIClient(config.APIUrl, config.Auth)
@@ -126,7 +126,7 @@ func runEncryptInteractive(config *EncryptConfig) error {
 	}
 
 	// 7. Generate Secret YAML
-	fmt.Println(progressStyle.Render("\nGenerating Kubernetes Secret YAML..."))
+	printSection(progressStyle, "Generating Kubernetes Secret YAML...")
 	secretYAML, err := sops.GenerateSecretYAML(sops.SecretData{
 		Name:       secretName,
 		Namespace:  secretNamespace,
@@ -137,7 +137,7 @@ func runEncryptInteractive(config *EncryptConfig) error {
 	}
 
 	// 8. Preview (pre-encryption) + confirm
-	fmt.Println(progressStyle.Render("\nSecret YAML (pre-encryption):"))
+	printSection(progressStyle, "Secret YAML (pre-encryption):")
 	fmt.Println(yamlStyle.Render(string(secretYAML)))
 
 	var confirm bool

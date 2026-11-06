@@ -93,9 +93,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 				for i, s := range tmpl.Spec.Secrets {
 					secretNames[i] = s.Name
 				}
-				fmt.Printf("\n%s\n", progressStyle.Render(
-					fmt.Sprintf("Note: %s will render %d resources:", tmpl.Metadata.Title, 1+len(tmpl.Spec.Secrets)),
-				))
+				printSection(progressStyle, fmt.Sprintf("Note: %s will render %d resources:", tmpl.Metadata.Title, 1+len(tmpl.Spec.Secrets)))
 				fmt.Printf("  1. %s (rendered via API)\n", tmpl.Spec.Type)
 				for i, sn := range secretNames {
 					fmt.Printf("  %d. Encrypted Secret: %s (encrypted locally with SOPS)\n", i+2, sn)
@@ -118,9 +116,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 				continue
 			}
 
-			fmt.Printf("\n%s\n", progressStyle.Render(
-				fmt.Sprintf("━━━ Secret values for: %s ━━━", tmpl.Metadata.Title),
-			))
+			printSection(progressStyle, fmt.Sprintf("━━━ Secret values for: %s ━━━", tmpl.Metadata.Title))
 			fmt.Println("Values are encrypted locally with SOPS and never sent to the API.")
 
 			secretValues, err := collectInteractiveSecrets(tmpl, tp.Params)
@@ -173,9 +169,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			// Re-collect params for selected template
 			tmpl := templateMap[results[editIndex].TemplateName]
 
-			fmt.Printf("\n%s\n", progressStyle.Render(
-				fmt.Sprintf("━━━ Editing: %s ━━━", tmpl.Metadata.Title),
-			))
+			printSection(progressStyle, fmt.Sprintf("━━━ Editing: %s ━━━", tmpl.Metadata.Title))
 			fmt.Printf("%s\n\n", tmpl.Metadata.Description)
 
 			newParams, err := collectTemplateParams(tmpl)
@@ -221,7 +215,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 		return fmt.Errorf("no successful renders to save")
 	}
 
-	fmt.Println(successStyle.Render(fmt.Sprintf("\n%d/%d ready to save", successCount, len(results))))
+	printSection(successStyle, fmt.Sprintf("%d/%d ready to save", successCount, len(results)))
 
 	// Build output config from flags or run interactive form
 	var outputConfig OutputConfig
@@ -320,9 +314,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			continue
 		}
 
-		fmt.Printf("\n%s\n", progressStyle.Render(
-			fmt.Sprintf("━━━ Encrypting secrets for: %s ━━━", tmpl.Metadata.Title),
-		))
+		printSection(progressStyle, fmt.Sprintf("━━━ Encrypting secrets for: %s ━━━", tmpl.Metadata.Title))
 
 		secretResults, err := processTemplateSecrets(tmpl, r.Params, secretValues, config)
 		if err != nil {
@@ -462,7 +454,7 @@ func selectDirectory(startPath string) (string, error) {
 		options = append(options, huh.NewOption("➕ Create new folder...", "__create__"))
 
 		// Option to enter path manually
-		options = append(options, huh.NewOption("✏️  Enter path manually...", "__manual__"))
+		options = append(options, huh.NewOption("✎ Enter path manually...", "__manual__"))
 
 		var choice string
 		form := huh.NewForm(
@@ -1021,9 +1013,7 @@ func collectAllParams(selectedNames []string, templateMap map[string]*templates.
 		tmpl := templateMap[name]
 
 		// Show progress header
-		fmt.Printf("\n%s\n", progressStyle.Render(
-			fmt.Sprintf("━━━ Configuring: %s (%d/%d) ━━━", tmpl.Metadata.Title, i+1, len(selectedNames)),
-		))
+		printSection(progressStyle, fmt.Sprintf("━━━ Configuring: %s (%d/%d) ━━━", tmpl.Metadata.Title, i+1, len(selectedNames)))
 		fmt.Printf("%s\n\n", tmpl.Metadata.Description)
 
 		// Collect params for this template
