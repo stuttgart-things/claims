@@ -598,9 +598,15 @@ The `claims render` command follows an interactive workflow:
    - Show full YAML (through `$PAGER`, default `less -FRX`; or start with `--full`)
    - Edit a template's parameters (re-renders after editing)
    - Cancel the operation
-6. **Output** - Configure where and how to save files. The directory picker
-   starts in the directory of the order's `stuttgart-things.com/source-path`
-   annotation (relative to the git repository root) when there is one.
+6. **Output** - Configure where and how to save files. When every rendered
+   document names its file (`stuttgart-things.com/source-path`/`target-path`),
+   the cwd is in a git repository and no template defines secrets, the first,
+   preselected choice is **Fleet repo by source-path**: the same layout as
+   `--layout source-path` (files at their annotated paths, kustomization
+   entries, no registry entry, branch/PR title like the Backstage templates),
+   either with commit, push and PR or as files only. Otherwise (or with
+   **Local**) the directory picker starts in the directory of the order's
+   `source-path` annotation when there is one.
 7. **Git Operations** - Optionally commit/push rendered files:
    - None (just save locally)
    - Commit to current branch

@@ -258,12 +258,27 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			}
 		}
 
+		// The order names its own files (source-path): offer the layout the
+		// Backstage templates use, preselected.
+		layoutPlan := planInteractiveLayout(results, templateMap, config)
+
 		// Loop to allow going back from git validation to destination choice
 		for {
 			// First ask: git or save locally?
-			destChoice, err := runDestinationChoice()
+			destChoice, err := runDestinationChoice(layoutPlan != nil)
 			if err != nil {
 				return fail("destination choice", err)
+			}
+
+			if destChoice.layout {
+				done, err := runInteractiveLayout(layoutPlan, config)
+				if err != nil {
+					return fail("source-path layout", err)
+				}
+				if !done {
+					continue // back to the destination choice
+				}
+				return nil
 			}
 
 			// Run interactive output form with git validation if needed
@@ -378,21 +393,29 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 type destinationChoice struct {
 	useGit   bool
 	createPR bool
+	layout   bool // write by source-path into the fleet repo (render_layout.go)
 }
 
 // runDestinationChoice asks the user whether to save locally or commit+push+PR via git
-func runDestinationChoice() (destinationChoice, error) {
+func runDestinationChoice(offerLayout bool) (destinationChoice, error) {
 	var destination string
+
+	var options []huh.Option[string]
+	if offerLayout {
+		destination = "layout"
+		options = append(options, huh.NewOption("Fleet repo by source-path (PR like Backstage)", "layout"))
+	}
+	options = append(options,
+		huh.NewOption("Local", "local"),
+		huh.NewOption("Git (commit, push & create PR)", "pr"),
+	)
 
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Where to save?").
 				Description("Choose how to save the rendered files").
-				Options(
-					huh.NewOption("Local", "local"),
-					huh.NewOption("Git (commit, push & create PR)", "pr"),
-				).
+				Options(options...).
 				Value(&destination),
 		),
 	)
@@ -404,6 +427,7 @@ func runDestinationChoice() (destinationChoice, error) {
 	return destinationChoice{
 		useGit:   destination == "pr",
 		createPR: destination == "pr",
+		layout:   destination == "layout",
 	}, nil
 }
 
