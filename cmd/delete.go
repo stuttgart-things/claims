@@ -6,7 +6,6 @@ import (
 
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
-	"github.com/stuttgart-things/claims/internal/banner"
 	"github.com/stuttgart-things/claims/internal/gitops"
 )
 
@@ -108,7 +107,6 @@ func init() {
 }
 
 func runDelete(cmd *cobra.Command, args []string) {
-	banner.Show()
 
 	config := &DeleteConfig{
 		ResourceName: deleteResourceName,

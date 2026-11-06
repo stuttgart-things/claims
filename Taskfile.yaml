@@ -48,6 +48,34 @@ tasks:
           BIN_NAME: "{{ .PROJECT }}"
           OUTPUT_PATH: "{{ .OUTPUT_PATH }}"
 
+  build-local:
+    desc: Build ./bin/claims with version, commit and build date set via ldflags (no Dagger)
+    vars:
+      VERSION:
+        sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+      COMMIT:
+        sh: git rev-parse --short HEAD 2>/dev/null || true
+      DATE:
+        sh: date -u +%Y-%m-%dT%H:%M:%SZ
+      PKG: github.com/stuttgart-things/claims/cmd  # not {{.MODULE}}: included Taskfiles override it
+    cmds:
+      - mkdir -p {{ .BIN_DIR }}
+      - >-
+        go build -trimpath
+        -ldflags "-s -w
+        -X {{ .PKG }}.version={{ .VERSION }}
+        -X {{ .PKG }}.commit={{ .COMMIT }}
+        -X {{ .PKG }}.buildDate={{ .DATE }}"
+        -o {{ .BIN_DIR }}/{{ .PROJECT }} .
+      - "{{ .BIN_DIR }}/{{ .PROJECT }} version"
+
+  install-local:
+    desc: Run the unit tests, build-local and install the binary to ~/.local/bin
+    cmds:
+      - go test ./...
+      - task: build-local
+      - install -m 0755 {{ .BIN_DIR }}/{{ .PROJECT }} ${HOME}/.local/bin/{{ .PROJECT }}
+
   render:
     desc: Run render in non-interactive mode with test params
     vars:
