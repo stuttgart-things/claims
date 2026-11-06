@@ -67,7 +67,7 @@ render/delete/encrypt commands optionally perform a full git workflow: resolve c
 
 ### Lipgloss Styles
 
-Shared terminal styles are defined in `cmd/render_interactive.go` (successStyle, errorStyle, progressStyle, yamlStyle) and `cmd/render_review.go` (reviewHeaderStyle, resourceHeaderStyle, previewStyle). Import `lipgloss/v2`.
+Shared terminal styles and helpers: `cmd/ui.go` (printSection, styleLines, exitOn), `cmd/render_interactive.go` (successStyle, errorStyle, progressStyle, yamlStyle) and `cmd/render_review.go` (reviewHeaderStyle, resourceHeaderStyle, previewStyle). Import `lipgloss/v2`.
 
 ## Test Conventions
 
@@ -82,7 +82,13 @@ Shared terminal styles are defined in `cmd/render_interactive.go` (successStyle,
 
 ## Version Injection
 
-Binary version info is injected via ldflags into `cmd.version`, `cmd.buildDate`, `cmd.commit`. See `Taskfile.yaml` build task and `.goreleaser.yaml`.
+Binary version info is injected via ldflags into `cmd.version`, `cmd.buildDate`, `cmd.commit` (the only targets). See `task build-local`, the `build` task and `.goreleaser.yaml`. Empty values fall back to `debug.ReadBuildInfo()` (`internal/buildinfo`); unknown fields are left out of the banner and `claims version`.
+
+## Terminal Output
+
+- The banner shows only for the root help, only on a TTY, never with `NO_COLOR`.
+- Never pass newlines into a lipgloss `Render` (it pads lines with spaces): use `printSection` / `styleLines` in `cmd/ui.go`.
+- End commands with `exitOn(err)`: a user abort (`huh.ErrUserAborted`) exits 130 with a short note, errors exit 1 on stderr.
 
 ## Branch Naming
 
