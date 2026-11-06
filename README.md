@@ -41,7 +41,7 @@ go build -o claims .
 | `claims render` | Render claim templates, save locally or via Git PR |
 | `claims encrypt` | Create a SOPS-encrypted Kubernetes Secret via Git PR |
 | `claims delete` | Delete a claim via Git PR |
-| `claims change` (alias `resize`) | Change a claim (VM size) via Git PR |
+| `claims change` (alias `resize`) | Change a claim (VM size, Ansible re-run) via Git PR |
 | `claims list` | List claims (registry and `*-xrs` directories) |
 | `claims login` | Log in to claim-machinery-api with ZITADEL (device flow) |
 | `claims logout` | Forget the cached login for an API URL |
@@ -475,7 +475,7 @@ claims delete --xr
 
 Without `--create-pr` the files are only removed locally. `--git-branch` may only name `delete-claim/...`. In a local checkout you must be on `main` (the PR base): the gate accepts nothing but the claim's removal on top of it.
 
-### change: resize a VM claim
+### change: resize a VM claim or re-run its Ansible
 
 `claims change` resizes a VM claim (`NativeVsphereVM`, `NativeProxmoxVM`) in an `*-xrs` directory. It is a thin wrapper around the fleet repository's `dispatch-change-claim.yaml`, the workflow behind Backstage's `request-claim-change`. The rules stay in `hack/claim-change.py`:
 - cpu, memory and disk come from create-vm's size table
@@ -493,10 +493,29 @@ claims change --source-path clusters/labda/vsphere/machinery-orders-xrs/dev7.yam
 claims change -i                   # pick VM, size and reboot window
 ```
 
+#### Re-run a failed AnsibleRun (`--run-id`, `--retry`)
+
+Deleting an AnsibleRun does not re-run it (crossplane-configurations#554). A new `spec.ansible.runID` does: Crossplane renders the AnsibleRun afresh from the current spec and EnvironmentConfig defaults, so a fixed collection is picked up, and starts a new PipelineRun `<name>-ansible-<runID>`. `claims change` opens that change as a PR `change-claim/<name>`, on the same path as a resize.
+
+```bash
+claims change dev7-vm --retry --dry-run                       # unset -> 2, a number -> +1
+claims change dev7-vm --retry --reason "baseos collection fixed"
+claims change dev7-vm --run-id fix-docker                     # a chosen id
+```
+
+> **Read the failed run's logs before merging.** The merge deletes the previous PipelineRun and its TaskRun logs. claims and the PR body name the PipelineRun.
+
+- The claim's `spec.ansible.enabled` must be `true`, and the id must be new and match `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`.
+- `--retry` on a non-numeric runID is refused: pass the next one with `--run-id`.
+- In a checkout claims checks this up front and shows `current -> new`; the workflow checks again against `main`.
+- One change per PR: `--size` and `--run-id`/`--retry` exclude each other, and `--reboot` only goes with `--size`.
+- Needs vspherevm >= v0.14.0 / proxmoxvm >= v0.20.0 on the management cluster (crossplane-configurations#555). An older XRD rejects the field, and Flux reports the apply as failed.
+
 | Flag | Description |
 |------|-------------|
-| `--kind`, `--name`, `--namespace`, `--source-path` | The VM claim. Outside a checkout, give `--kind`, `--name` and `--source-path` |
+| `--kind`, `--name`, `--namespace`, `--source-path` | The VM claim (or the argument: a name, or a path ending in `.yaml`). Outside a checkout, give `--kind`, `--name` and `--source-path` |
 | `--size` | New size: `small`, `medium`, `large` or `xlarge` (checked by the workflow) |
+| `--run-id`, `--retry` | Re-run the AnsibleRun with this `spec.ansible.runID`, or the next one (instead of `--size`) |
 | `--reboot` | When the one-shot run applies the resize in the guest: `evening` (19-22 Europe/Berlin, default), `now`, `none`, or an ISO-8601 time |
 | `--reason`, `--requested-by` | Shown in the PR body. `--requested-by` defaults to the git user, then the gh user |
 | `--repo`, `--ref` | Fleet repository (default: the checkout's) and the branch the workflow runs on (default `main`) |
