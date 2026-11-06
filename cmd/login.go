@@ -24,8 +24,9 @@ var (
 )
 
 var loginCmd = &cobra.Command{
-	Use:   "login",
-	Short: "Log in to claim-machinery-api with ZITADEL (device flow)",
+	Use:     "login",
+	GroupID: groupAuth,
+	Short:   "Log in to claim-machinery-api with ZITADEL (device flow)",
 	Long: `Log in to a claim-machinery-api endpoint as yourself, with the OAuth2
 device authorization flow against the endpoint's ZITADEL.
 
@@ -49,17 +50,19 @@ A token given with --api-token/$` + apiauth.EnvToken + ` or OIDC client credenti
 }
 
 var logoutCmd = &cobra.Command{
-	Use:   "logout",
-	Short: "Forget the cached login for an API URL",
-	Args:  cobra.NoArgs,
+	Use:     "logout",
+	GroupID: groupAuth,
+	Short:   "Forget the cached login for an API URL",
+	Args:    cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		exitOn(runLogoutCmd(os.Stdout))
 	},
 }
 
 var whoamiCmd = &cobra.Command{
-	Use:   "whoami",
-	Short: "Show the identity and roles claims sends to claim-machinery-api",
+	Use:     "whoami",
+	GroupID: groupAuth,
+	Short:   "Show the identity and roles claims sends to claim-machinery-api",
 	Long: `Show who claims authenticates as towards an API URL: the user, the
 roles and groups in the token, and the user reference claim-machinery-api
 stamps into requested_by. Uses the same precedence as render: --api-token /

@@ -45,8 +45,9 @@ type deleteXRFlags struct {
 }
 
 var deleteCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a claim via Git PR",
+	Use:     "delete",
+	GroupID: groupClaims,
+	Short:   "Delete a claim via Git PR",
 	Long: `Removes a Crossplane claim through a Git PR. Two layouts:
 
 XR in an *-xrs directory (clusters/<lab>/<infra>/<x>-xrs/, e.g. machinery orders):

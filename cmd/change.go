@@ -53,8 +53,10 @@ var changeFlags ChangeConfig
 var changeInteractive bool
 
 var changeCmd = &cobra.Command{
-	Use:   "change",
-	Short: "Resize a VM claim via a change-claim PR",
+	Use:     "change",
+	Aliases: []string{"resize"},
+	GroupID: groupClaims,
+	Short:   "Change a claim (VM size) via Git PR",
 	Long: `Resize a VM claim (NativeVsphereVM, NativeProxmoxVM) in an *-xrs directory of
 the fleet repository.
 

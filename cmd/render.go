@@ -47,10 +47,11 @@ var (
 )
 
 var renderCmd = &cobra.Command{
-	Use:   "render",
-	Short: "Render a claim template interactively",
-	Long:  `Connects to the claim-machinery API, fetches available templates, and provides an interactive form to render claims.`,
-	Run:   runRender,
+	Use:     "render",
+	GroupID: groupClaims,
+	Short:   "Render claim templates, save locally or via Git PR",
+	Long:    `Connects to the claim-machinery API, fetches available templates, and provides an interactive form to render claims.`,
+	Run:     runRender,
 }
 
 func init() {

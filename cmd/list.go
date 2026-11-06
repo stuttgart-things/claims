@@ -19,10 +19,11 @@ var (
 )
 
 var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List claims from registry",
-	Long:  `Lists all claims registered in claims/registry.yaml, with optional filtering by category or template.`,
-	Run:   runList,
+	Use:     "list",
+	GroupID: groupClaims,
+	Short:   "List claims (registry and *-xrs directories)",
+	Long:    `Lists all claims registered in claims/registry.yaml, with optional filtering by category or template.`,
+	Run:     runList,
 }
 
 func init() {

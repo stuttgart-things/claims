@@ -41,10 +41,11 @@ var (
 )
 
 var encryptCmd = &cobra.Command{
-	Use:   "encrypt",
-	Short: "Create a SOPS-encrypted Kubernetes Secret via Git PR",
-	Long:  `Fetches a template from the claim-machinery API, collects secret values, generates a Kubernetes Secret YAML, encrypts it with SOPS (age), and optionally commits via Git PR.`,
-	Run:   runEncrypt,
+	Use:     "encrypt",
+	GroupID: groupClaims,
+	Short:   "Create a SOPS-encrypted Kubernetes Secret via Git PR",
+	Long:    `Fetches a template from the claim-machinery API, collects secret values, generates a Kubernetes Secret YAML, encrypts it with SOPS (age), and optionally commits via Git PR.`,
+	Run:     runEncrypt,
 }
 
 func init() {
