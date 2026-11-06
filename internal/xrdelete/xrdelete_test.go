@@ -102,6 +102,32 @@ func TestScan(t *testing.T) {
 	}
 }
 
+func TestList(t *testing.T) {
+	root := Fixture(t)
+	xrs, err := xrdelete.List(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, x := range xrs {
+		got = append(got, x.Kind+" "+x.Name)
+	}
+	// every XR of the *-xrs directories except the run-once run; files with
+	// two XRs, refused kinds and moved files included; not-in-xrs not.
+	want := []string{
+		"NativeVsphereVM claims-e2e-vm",
+		"ClusterStack app-dev",
+		"NativeVsphereVM dev7-vm",
+		"NativeVsphereVM dev8-vm",
+		"NativeVsphereVM moved-vm",
+		"NativeVsphereVM a-vm",
+		"NativeVsphereVM b-vm",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("List =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
 func TestFind(t *testing.T) {
 	root := Fixture(t)
 	x, err := xrdelete.Find(root, "", "dev7-vm", "")
