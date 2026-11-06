@@ -12,6 +12,7 @@ var (
 	apiURL          string
 	outputDir       string
 	dryRun          bool
+	fullPreview     bool
 	singleFile      bool
 	filenamePattern string
 	templateNames   []string
@@ -58,6 +59,7 @@ func init() {
 	renderCmd.Flags().StringVarP(&apiURL, "api-url", "a", "", "API URL (default: $CLAIM_API_URL or http://localhost:8080)")
 	renderCmd.Flags().StringVarP(&outputDir, "output-dir", "o", ".", "Output directory for rendered files")
 	renderCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print output without writing files")
+	renderCmd.Flags().BoolVar(&fullPreview, "full", false, "Interactive review: show the complete YAML instead of the first lines")
 	renderCmd.Flags().BoolVar(&singleFile, "single-file", false, "Combine all resources into one file")
 	renderCmd.Flags().StringVar(&filenamePattern, "filename-pattern", "{{.template}}-{{.name}}.yaml", "Pattern for output filenames")
 	renderCmd.Flags().StringSliceVarP(&templateNames, "templates", "t", nil, "Templates to render (comma-separated or repeated)")
@@ -121,6 +123,7 @@ func runRender(cmd *cobra.Command, args []string) {
 		FilenamePattern:  filenamePattern,
 		SingleFile:       singleFile,
 		DryRun:           dryRun,
+		FullPreview:      fullPreview,
 		FileMode:         fileMode,
 		Layout:           layoutName,
 	}
@@ -183,10 +186,7 @@ func runRender(cmd *cobra.Command, args []string) {
 		} else {
 			selectedURL, promptErr = promptAPIURL(config.APIUrls[0])
 		}
-		if promptErr != nil {
-			fmt.Printf("Error: %v\n", promptErr)
-			os.Exit(1)
-		}
+		exitOn(promptErr)
 		config.APIUrl = selectedURL
 		fmt.Printf("\nConnecting to API: %s\n", config.APIUrl)
 
@@ -198,8 +198,5 @@ func runRender(cmd *cobra.Command, args []string) {
 		err = runNonInteractive(config)
 	}
 
-	if err != nil {
-		fmt.Println(errorStyle.Render(err.Error()))
-		os.Exit(1)
-	}
+	exitOn(err)
 }

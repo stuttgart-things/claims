@@ -155,8 +155,5 @@ func runEncrypt(cmd *cobra.Command, args []string) {
 		err = runEncryptNonInteractive(config)
 	}
 
-	if err != nil {
-		fmt.Println(errorStyle.Render(err.Error()))
-		os.Exit(1)
-	}
+	exitOn(err)
 }

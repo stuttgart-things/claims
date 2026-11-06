@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -15,7 +17,12 @@ const (
 	ReviewActionContinue ReviewAction = "continue"
 	ReviewActionEdit     ReviewAction = "edit"
 	ReviewActionCancel   ReviewAction = "cancel"
+	ReviewActionFull     ReviewAction = "full"
 )
+
+// reviewPreviewLines is how many lines of each resource the review shows
+// unless --full is set.
+const reviewPreviewLines = 15
 
 // Styles for review UI
 var (
@@ -35,9 +42,10 @@ var (
 			Padding(0, 1)
 )
 
-// ReviewResults displays rendered results and allows user to continue, edit, or cancel
+// ReviewResults displays rendered results and allows user to continue, edit, view
+// the full YAML, or cancel. full shows every resource untruncated.
 // Returns the chosen action, the index of the template to edit (if action is edit), and any error
-func ReviewResults(results []RenderResult) (ReviewAction, int, error) {
+func ReviewResults(results []RenderResult, full bool) (ReviewAction, int, error) {
 	printSection(reviewHeaderStyle, "━━━ Review Rendered Resources ━━━")
 	fmt.Println()
 
@@ -49,7 +57,8 @@ func ReviewResults(results []RenderResult) (ReviewAction, int, error) {
 		}
 	}
 
-	// Display each rendered resource
+	// Display each rendered resource: header, box, one blank line
+	truncated := false
 	for _, r := range results {
 		if r.Error != nil {
 			fmt.Printf("%s %s (ERROR: %v)\n\n",
@@ -64,7 +73,11 @@ func ReviewResults(results []RenderResult) (ReviewAction, int, error) {
 		fmt.Println(resourceHeaderStyle.Render(header))
 
 		// Truncate long YAML for preview
-		preview := truncateYAML(r.Content, 15)
+		preview := strings.TrimSpace(r.Content)
+		if !full {
+			preview = truncateYAML(r.Content, reviewPreviewLines)
+			truncated = truncated || preview != strings.TrimSpace(r.Content)
+		}
 		fmt.Println(previewStyle.Render(preview))
 		fmt.Println()
 	}
@@ -78,15 +91,22 @@ func ReviewResults(results []RenderResult) (ReviewAction, int, error) {
 	// Action selection
 	var action string
 
+	options := []huh.Option[string]{
+		huh.NewOption("Continue to save", "continue"),
+	}
+	if truncated {
+		options = append(options, huh.NewOption("Show full YAML", string(ReviewActionFull)))
+	}
+	options = append(options,
+		huh.NewOption("Edit a template's parameters", "edit"),
+		huh.NewOption("Cancel", "cancel"),
+	)
+
 	actionForm := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("What would you like to do?").
-				Options(
-					huh.NewOption("Continue to save", "continue"),
-					huh.NewOption("Edit a template's parameters", "edit"),
-					huh.NewOption("Cancel", "cancel"),
-				).
+				Options(options...).
 				Value(&action),
 		),
 	)
@@ -164,6 +184,37 @@ func truncateYAML(content string, maxLines int) string {
 
 	truncated := strings.Join(lines[:maxLines], "\n")
 	return truncated + fmt.Sprintf("\n... (%d more lines)", len(lines)-maxLines)
+}
+
+// showFullResults shows the complete rendered YAML: through $PAGER (default
+// "less -FRX") on a terminal, printed otherwise or when no pager is found.
+func showFullResults(results []RenderResult) {
+	content := renderedYAML(results)
+	if isTTY(os.Stdout) {
+		if err := runPager(content); err == nil {
+			return
+		}
+	}
+	printSection(reviewHeaderStyle, "━━━ Full YAML ━━━")
+	fmt.Println()
+	fmt.Print(content)
+}
+
+// runPager pipes content through $PAGER, or less -FRX.
+func runPager(content string) error {
+	pager := strings.Fields(os.Getenv("PAGER"))
+	if len(pager) == 0 {
+		pager = []string{"less", "-FRX"}
+	}
+	bin, err := exec.LookPath(pager[0])
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(bin, pager[1:]...)
+	cmd.Stdin = strings.NewReader(content)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // ShowFullPreview displays complete YAML for a single result

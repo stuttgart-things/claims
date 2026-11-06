@@ -174,10 +174,7 @@ func runDelete(cmd *cobra.Command, args []string) {
 		err = runDeleteNonInteractive(config)
 	}
 
-	if err != nil {
-		fmt.Println(errorStyle.Render(err.Error()))
-		os.Exit(1)
-	}
+	exitOn(err)
 }
 
 // xrRepo reports whether the current repository has *-xrs directories but no

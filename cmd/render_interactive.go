@@ -153,11 +153,20 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 	fmt.Println("\nRendering templates...")
 	results := renderAllTemplates(client, allParams)
 
+	// From here on an abort would lose the rendered output (and the minutes
+	// of input behind it): offer to print it or keep it in a temp file.
+	fail := func(step string, err error) error {
+		if isAbort(err) {
+			return &abortError{note: rescueRendered(results)}
+		}
+		return fmt.Errorf("%s: %w", step, err)
+	}
+
 	// Review loop - allows going back to edit parameters
 	for {
-		action, editIndex, err := ReviewResults(results)
+		action, editIndex, err := ReviewResults(results, config.FullPreview)
 		if err != nil {
-			return fmt.Errorf("review: %w", err)
+			return fail("review", err)
 		}
 
 		switch action {
@@ -173,6 +182,10 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			fmt.Printf("%s\n\n", tmpl.Metadata.Description)
 
 			newParams, err := collectTemplateParams(tmpl)
+			if isAbort(err) {
+				fmt.Println("Edit cancelled, keeping the previous render.")
+				continue // Stay in review loop
+			}
 			if err != nil {
 				fmt.Printf("Error collecting parameters: %v\n", err)
 				continue // Stay in review loop
@@ -195,8 +208,12 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			}
 			continue // Loop back to review
 
+		case ReviewActionFull:
+			showFullResults(results)
+			continue // Loop back to review
+
 		case ReviewActionCancel:
-			fmt.Println("Cancelled.")
+			fmt.Println("Cancelled, nothing written.")
 			return nil
 		}
 
@@ -246,13 +263,13 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			// First ask: git or save locally?
 			destChoice, err := runDestinationChoice()
 			if err != nil {
-				return fmt.Errorf("destination choice: %w", err)
+				return fail("destination choice", err)
 			}
 
 			// Run interactive output form with git validation if needed
 			formConfig, goBack, err := runOutputFormWithValidation(destChoice.useGit, successCount, exampleTemplate, exampleName)
 			if err != nil {
-				return fmt.Errorf("output configuration: %w", err)
+				return fail("output configuration", err)
 			}
 			if goBack {
 				// User wants to go back and change destination choice
@@ -268,7 +285,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			if destChoice.useGit {
 				gitConfig, err := runGitDetailsForm(destChoice.createPR)
 				if err != nil {
-					return fmt.Errorf("git options: %w", err)
+					return fail("git options", err)
 				}
 				config.GitConfig = gitConfig
 
@@ -276,7 +293,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 				if destChoice.createPR {
 					prConfig, err := runPROptionsForm()
 					if err != nil {
-						return fmt.Errorf("PR options: %w", err)
+						return fail("PR options", err)
 					}
 					config.PRConfig = prConfig
 				}

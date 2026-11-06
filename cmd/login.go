@@ -88,13 +88,6 @@ func init() {
 	rootCmd.AddCommand(loginCmd, logoutCmd, whoamiCmd)
 }
 
-func exitOn(err error) {
-	if err != nil {
-		fmt.Println(errorStyle.Render(err.Error()))
-		os.Exit(1)
-	}
-}
-
 // singleAPIURL resolves the API URL for login/logout/whoami: the flag, else
 // $CLAIM_API_URL (which must then name exactly one endpoint), else the
 // render default.

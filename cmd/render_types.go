@@ -29,6 +29,7 @@ type RenderConfig struct {
 	FilenamePattern string
 	SingleFile      bool
 	DryRun          bool
+	FullPreview     bool   // review shows the complete YAML (--full)
 	FileMode        string // "overwrite" (default) or "append"
 	Layout          string // "" (output-dir + filename-pattern + registry) or "source-path"
 
