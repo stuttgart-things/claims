@@ -1,3 +1,10 @@
+# [0.22.0](https://github.com/stuttgart-things/claims/compare/v0.21.0...v0.22.0) (2026-11-06)
+
+
+### Features
+
+* **change:** --run-id / --retry to re-run a VM order's AnsibleRun via PR ([#106](https://github.com/stuttgart-things/claims/issues/106)) ([25ccbce](https://github.com/stuttgart-things/claims/commit/25ccbcebe36e83fb76bc5429daccc5ce365d9f08)), closes [crossplane-configurations#555](https://github.com/crossplane-configurations/issues/555) [dagger-#runner-labda1-vm-ansible](https://github.com/dagger-/issues/runner-labda1-vm-ansible) [#4366](https://github.com/stuttgart-things/claims/issues/4366)
+
 # [0.21.0](https://github.com/stuttgart-things/claims/compare/v0.20.0...v0.21.0) (2026-11-06)
 
 
