@@ -13,6 +13,7 @@ var (
 	outputDir       string
 	dryRun          bool
 	fullPreview     bool
+	toStdout        bool
 	singleFile      bool
 	filenamePattern string
 	templateNames   []string
@@ -60,6 +61,7 @@ func init() {
 	renderCmd.Flags().StringVarP(&outputDir, "output-dir", "o", ".", "Output directory for rendered files")
 	renderCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print output without writing files")
 	renderCmd.Flags().BoolVar(&fullPreview, "full", false, "Interactive review: show the complete YAML instead of the first lines")
+	renderCmd.Flags().BoolVar(&toStdout, "stdout", false, "Print the rendered YAML to stdout and write nothing (non-interactive; progress goes to stderr)")
 	renderCmd.Flags().BoolVar(&singleFile, "single-file", false, "Combine all resources into one file")
 	renderCmd.Flags().StringVar(&filenamePattern, "filename-pattern", "{{.template}}-{{.name}}.yaml", "Pattern for output filenames")
 	renderCmd.Flags().StringSliceVarP(&templateNames, "templates", "t", nil, "Templates to render (comma-separated or repeated)")
@@ -98,6 +100,22 @@ func init() {
 	rootCmd.AddCommand(renderCmd)
 }
 
+// validateStdout rejects flags that do not go with --stdout, which only
+// prints the rendered YAML.
+func validateStdout(config *RenderConfig, forceInteractive bool) error {
+	switch {
+	case forceInteractive:
+		return fmt.Errorf("--stdout is non-interactive; drop --interactive")
+	case config.GitConfig != nil || config.PRConfig != nil:
+		return fmt.Errorf("--stdout writes nothing; it does not combine with --git-* or --create-pr/--pr-* flags")
+	case config.Layout != "":
+		return fmt.Errorf("--stdout writes nothing; it does not combine with --layout")
+	case config.DryRun:
+		return fmt.Errorf("--stdout already writes nothing; drop --dry-run")
+	}
+	return nil
+}
+
 func runRender(cmd *cobra.Command, args []string) {
 
 	// Get API URL from flag, environment, or default.
@@ -124,6 +142,7 @@ func runRender(cmd *cobra.Command, args []string) {
 		SingleFile:       singleFile,
 		DryRun:           dryRun,
 		FullPreview:      fullPreview,
+		Stdout:           toStdout,
 		FileMode:         fileMode,
 		Layout:           layoutName,
 	}
@@ -155,7 +174,12 @@ func runRender(cmd *cobra.Command, args []string) {
 	}
 
 	// Determine mode
-	if nonInteractive {
+	if config.Stdout {
+		if err := validateStdout(config, interactive); err != nil {
+			exitOn(err)
+		}
+		config.Interactive = false
+	} else if nonInteractive {
 		config.Interactive = false
 	} else if interactive {
 		config.Interactive = true
@@ -194,7 +218,7 @@ func runRender(cmd *cobra.Command, args []string) {
 	} else {
 		// Non-interactive: use first URL
 		config.APIUrl = config.APIUrls[0]
-		fmt.Printf("Connecting to API: %s\n\n", config.APIUrl)
+		_, _ = fmt.Fprintf(config.progressOut(), "Connecting to API: %s\n\n", config.APIUrl)
 		err = runNonInteractive(config)
 	}
 

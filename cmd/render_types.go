@@ -1,6 +1,11 @@
 package cmd
 
-import "github.com/stuttgart-things/claims/internal/apiauth"
+import (
+	"io"
+	"os"
+
+	"github.com/stuttgart-things/claims/internal/apiauth"
+)
 
 // RenderConfig holds configuration for the render command
 type RenderConfig struct {
@@ -30,6 +35,7 @@ type RenderConfig struct {
 	SingleFile      bool
 	DryRun          bool
 	FullPreview     bool   // review shows the complete YAML (--full)
+	Stdout          bool   // print the rendered YAML to stdout, write nothing (--stdout)
 	FileMode        string // "overwrite" (default) or "append"
 	Layout          string // "" (output-dir + filename-pattern + registry) or "source-path"
 
@@ -41,6 +47,15 @@ type RenderConfig struct {
 
 	// PR configuration
 	PRConfig *PRConfig
+}
+
+// progressOut is where progress messages go: stderr with --stdout, so
+// stdout carries nothing but the YAML.
+func (c *RenderConfig) progressOut() io.Writer {
+	if c.Stdout {
+		return os.Stderr
+	}
+	return os.Stdout
 }
 
 // GitConfig holds git-related configuration
