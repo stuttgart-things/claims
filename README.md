@@ -421,7 +421,7 @@ Start from an up-to-date `main`: the branch is created from the current HEAD.
 ### list
 
 ```bash
-claims list [--source all|registry|xrs] [--repo DIR] [--registry FILE] [--template T] [--category C] [-o table|json]
+claims list [--source all|registry|xrs] [--kind K,...] [--repo DIR] [--registry FILE] [--template T] [--category C] [-o table|json]
 ```
 
 Lists the claims of the fleet repository from two places: `claims/registry.yaml`
@@ -430,6 +430,9 @@ Lists the claims of the fleet repository from two places: `claims/registry.yaml`
 file; run-once runs are left out). The repository is the git repository around
 the current directory, or `--repo` / `$CLAIMS_REPO`; the registry is
 `--registry` / `$CLAIMS_REGISTRY` or `<repo>/claims/registry.yaml`.
+`--kind` keeps only XRs of the given kinds (comma-separated or repeated,
+case-insensitive), e.g. `--kind NativeVsphereVM,NativeProxmoxVM` for the VMs;
+registry entries have no kind and are left out (noted on stderr).
 
 ### delete: XRs in `*-xrs` directories
 
