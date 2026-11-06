@@ -186,7 +186,7 @@ func runEncryptInteractive(config *EncryptConfig) error {
 	var outputDir string
 	var useGit bool
 
-	destChoice, err := runDestinationChoice()
+	destChoice, err := runDestinationChoice(false)
 	if err != nil {
 		return fmt.Errorf("destination choice: %w", err)
 	}
