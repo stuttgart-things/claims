@@ -98,16 +98,13 @@ tasks:
     cmds:
       - ./tests/test_gitops.sh
 
-  release-bin:
-    desc: Release binary via goreleaser using Dagger
+  release-check:
+    desc: Dry-run GoReleaser via Dagger (releases come from the Release workflow only)
     cmds:
-      - task: git:release
       - task: goBuild:release
         vars:
           SRC: .
-          CHECK_ONLY:
-            sh: |
-              gum choose --header "Perform a dry run only?" "true" "false" || echo "false"
+          CHECK_ONLY: "true"
           OUTPUT_PATH: /tmp/claims/goreleaser.log
           RELEASER_VERSION: v2.13.3
 
