@@ -643,7 +643,8 @@ task --list
 | `task render` | Run render in non-interactive mode with params file |
 | `task render-inline` | Run render in non-interactive mode with inline params |
 | `task test-gitops` | Run GitOps integration tests |
-| `task release` | Release binary via goreleaser |
+| `task release-check` | Dry-run GoReleaser (releases come from the Release workflow only) |
+| `task trigger-release` | Start the Release workflow by hand (no test gate) |
 
 **Testing non-interactive mode:**
 

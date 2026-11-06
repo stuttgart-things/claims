@@ -1,0 +1,31 @@
+---
+name: PR Title
+# Squash merges take the PR title as the commit subject, and semantic-release
+# derives the version from it: the title must be a Conventional Commit.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  conventional-commit:
+    name: Conventional Commit title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          types='build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test'
+          if printf '%s' "$TITLE" | grep -Eq "^($types)(\([a-z0-9._/-]+\))?: [^ ].*"; then
+            echo "OK: $TITLE"
+            exit 0
+          fi
+          echo "::error title=PR title::\"$TITLE\" is not a Conventional Commit."
+          echo "Use <type>(<scope>)?: <summary>, type one of: ${types//|/, }."
+          echo "feat -> minor release, fix/perf -> patch, others -> no release;"
+          echo "A breaking change needs a 'BREAKING CHANGE:' footer in the squash message (no \"!\": the angular preset ignores it)."
+          exit 1

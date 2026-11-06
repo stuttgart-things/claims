@@ -19,7 +19,7 @@ builds:
       - -s
       - -w
       - -extldflags=-static
-      - -X github.com/stuttgart-things/claims/cmd.version={{.Version}}
+      - -X github.com/stuttgart-things/claims/cmd.version={{.Tag}}
       - -X github.com/stuttgart-things/claims/cmd.commit={{.Commit}}
       - -X github.com/stuttgart-things/claims/cmd.buildDate={{.Date}}
     goos:
@@ -36,15 +36,10 @@ checksum:
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
+# semantic-release writes the release notes and creates the GitHub release;
+# GoReleaser only adds the binaries to it.
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
-      - Merge pull request
-      - Merge branch
+  disable: true
 
 release:
   github:
@@ -52,11 +47,4 @@ release:
     name: claims
   draft: false
   prerelease: auto
-  footer: |
-    ## Installation
-
-    ### Binary
-    Download the appropriate binary for your platform from the assets below.
-
-    ---
-    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
+  mode: keep-existing
