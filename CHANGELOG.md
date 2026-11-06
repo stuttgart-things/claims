@@ -1,3 +1,10 @@
+# [0.20.0](https://github.com/stuttgart-things/claims/compare/v0.19.0...v0.20.0) (2026-11-06)
+
+
+### Features
+
+* UX- und Bugfix-Runde (Version, list, Render-Flow, Help) ([#101](https://github.com/stuttgart-things/claims/issues/101)) ([77ffcf5](https://github.com/stuttgart-things/claims/commit/77ffcf581d44d8ce5cd9e93e6cf60baaf5d023b4))
+
 # [0.19.0](https://github.com/stuttgart-things/claims/compare/v0.18.0...v0.19.0) (2026-11-04)
 
 
