@@ -2,59 +2,217 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 	"github.com/stuttgart-things/claims/internal/registry"
+	"github.com/stuttgart-things/claims/internal/xrdelete"
+)
+
+const (
+	defaultRegistryPath = "claims/registry.yaml"
+	envRegistry         = "CLAIMS_REGISTRY"
+	envRepo             = "CLAIMS_REPO"
+
+	listSourceAll      = "all"
+	listSourceRegistry = "registry"
+	listSourceXRs      = "xrs"
+
+	// sourceXRs marks entries read from an *-xrs directory (SOURCE column).
+	sourceXRs = "xrs"
 )
 
 var (
 	listRegistryPath string
+	listRepo         string
+	listSource       string
 	listCategory     string
 	listTemplate     string
 	listOutput       string
 )
 
 var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List claims from registry",
-	Long:  `Lists all claims registered in claims/registry.yaml, with optional filtering by category or template.`,
-	Run:   runList,
+	Use:     "list",
+	GroupID: groupClaims,
+	Short:   "List claims (registry and *-xrs directories)",
+	Long: `Lists the claims of a fleet repository from two places:
+
+  registry  claims/registry.yaml, written by "claims render" (default layout)
+  xrs       the XRs in clusters/<lab>/<infra>/*-xrs/*.yaml, e.g. the VM orders in
+            clusters/labda/vsphere/machinery-orders-xrs/ (run-once runs left out);
+            TEMPLATE shows the XR kind, PATH the file
+
+The repository is the git repository around the current directory, or
+--repo / $CLAIMS_REPO. The registry is <repo>/claims/registry.yaml, or
+--registry / $CLAIMS_REGISTRY (relative paths: against the current directory if
+the file exists there, else against the repository). A missing registry is fine
+as long as the repository has *-xrs directories.`,
+	Example: `  claims list
+  claims list --source xrs --template NativeVsphereVM
+  claims list --repo ~/projects/stuttgart-things -o json
+  CLAIMS_REGISTRY=/path/to/registry.yaml claims list --source registry`,
+	Args: cobra.NoArgs,
+	Run:  runList,
 }
 
 func init() {
-	listCmd.Flags().StringVar(&listRegistryPath, "registry-path", "claims/registry.yaml", "Path to registry.yaml")
+	listCmd.Flags().StringVar(&listRegistryPath, "registry", "", "Path to registry.yaml (default: $CLAIMS_REGISTRY or <repo>/"+defaultRegistryPath+")")
+	listCmd.Flags().StringVar(&listRegistryPath, "registry-path", "", "Path to registry.yaml (alias of --registry)")
+	_ = listCmd.Flags().MarkHidden("registry-path")
+	listCmd.Flags().StringVar(&listRepo, "repo", "", "Fleet repository root (default: $CLAIMS_REPO or the git repository around the current directory)")
+	listCmd.Flags().StringVar(&listSource, "source", listSourceAll, "Where to read claims from: all, registry, xrs")
 	listCmd.Flags().StringVar(&listCategory, "category", "", "Filter by category")
-	listCmd.Flags().StringVar(&listTemplate, "template", "", "Filter by template")
+	listCmd.Flags().StringVar(&listTemplate, "template", "", "Filter by template (XRs: kind)")
 	listCmd.Flags().StringVarP(&listOutput, "output", "o", "table", "Output format (table, json)")
 
 	rootCmd.AddCommand(listCmd)
 }
 
-func runList(cmd *cobra.Command, args []string) {
-	// Resolve registry path
-	registryPath := listRegistryPath
+// listOptions are the resolved inputs of claims list.
+type listOptions struct {
+	Registry string // flag value; "" = env or default
+	Repo     string // flag value; "" = env or git root of Cwd
+	Cwd      string
+	Getenv   func(string) string
+}
 
-	// If not absolute, try relative to repo root
-	if !filepath.IsAbs(registryPath) {
-		cwd, err := os.Getwd()
-		if err == nil {
-			repoRoot, err := findRepoRoot(cwd)
-			if err == nil {
-				registryPath = filepath.Join(repoRoot, registryPath)
-			}
+// listLocation is where claims list reads from.
+type listLocation struct {
+	RepoRoot         string // "" when not found
+	RegistryPath     string
+	RegistryExplicit bool // set by flag or env: a missing file is an error
+}
+
+// resolveListLocation applies flag > env > default for the repository root
+// and the registry path.
+func resolveListLocation(o listOptions) listLocation {
+	var loc listLocation
+
+	repo := o.Repo
+	if repo == "" {
+		repo = o.Getenv(envRepo)
+	}
+	if repo != "" {
+		if !filepath.IsAbs(repo) {
+			repo = filepath.Join(o.Cwd, repo)
+		}
+		loc.RepoRoot = filepath.Clean(repo)
+	} else if root, err := findRepoRoot(o.Cwd); err == nil {
+		loc.RepoRoot = root
+	}
+
+	reg := o.Registry
+	if reg == "" {
+		reg = o.Getenv(envRegistry)
+	}
+	loc.RegistryExplicit = reg != ""
+	if reg == "" {
+		reg = defaultRegistryPath
+	}
+
+	switch {
+	case filepath.IsAbs(reg):
+		loc.RegistryPath = reg
+	case loc.RegistryExplicit && fileExists(filepath.Join(o.Cwd, reg)):
+		loc.RegistryPath = filepath.Join(o.Cwd, reg)
+	case loc.RepoRoot != "":
+		loc.RegistryPath = filepath.Join(loc.RepoRoot, reg)
+	default:
+		loc.RegistryPath = filepath.Join(o.Cwd, reg)
+	}
+	return loc
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+// collectClaims reads the registry and/or the *-xrs directories.
+func collectClaims(loc listLocation, source string) ([]registry.ClaimEntry, error) {
+	switch source {
+	case listSourceAll, listSourceRegistry, listSourceXRs:
+	default:
+		return nil, fmt.Errorf("unknown --source %q (want %s, %s or %s)", source, listSourceAll, listSourceRegistry, listSourceXRs)
+	}
+
+	var entries []registry.ClaimEntry
+	foundRegistry, foundXRs := false, false
+
+	if source != listSourceXRs {
+		reg, err := registry.Load(loc.RegistryPath)
+		switch {
+		case err == nil:
+			foundRegistry = true
+			entries = append(entries, reg.Claims...)
+		case !errors.Is(err, fs.ErrNotExist):
+			return nil, err
+		case loc.RegistryExplicit || source == listSourceRegistry:
+			return nil, fmt.Errorf("no claims registry at %s\n%s", loc.RegistryPath, listLocationHint)
 		}
 	}
 
-	reg, err := registry.Load(registryPath)
+	if source != listSourceRegistry && loc.RepoRoot != "" {
+		dirs, err := xrdelete.XRSDirs(loc.RepoRoot)
+		if err != nil {
+			return nil, err
+		}
+		foundXRs = len(dirs) > 0
+		xrs, err := xrdelete.List(loc.RepoRoot)
+		if err != nil {
+			return nil, err
+		}
+		for _, x := range xrs {
+			entries = append(entries, registry.ClaimEntry{
+				Name:      x.Name,
+				Template:  x.Kind,
+				Namespace: x.Namespace,
+				Source:    sourceXRs,
+				Path:      x.File,
+			})
+		}
+	}
+
+	if !foundRegistry && !foundXRs {
+		where := loc.RegistryPath
+		if loc.RepoRoot == "" {
+			return nil, fmt.Errorf("not in a git repository and no claims registry at %s\n%s", where, listLocationHint)
+		}
+		return nil, fmt.Errorf("neither a claims registry (%s) nor *-xrs directories in %s\n%s", where, loc.RepoRoot, listLocationHint)
+	}
+	return entries, nil
+}
+
+const listLocationHint = `Run claims list inside the fleet repository, or point it there:
+  --repo <dir>        or CLAIMS_REPO=<dir>       (repository root)
+  --registry <file>   or CLAIMS_REGISTRY=<file>  (registry.yaml)`
+
+func runList(cmd *cobra.Command, args []string) {
+	cwd, err := os.Getwd()
 	if err != nil {
-		fmt.Println(errorStyle.Render(fmt.Sprintf("Error loading registry: %v", err)))
+		printError(err)
+		os.Exit(1)
+	}
+	loc := resolveListLocation(listOptions{
+		Registry: listRegistryPath,
+		Repo:     listRepo,
+		Cwd:      cwd,
+		Getenv:   os.Getenv,
+	})
+
+	all, err := collectClaims(loc, listSource)
+	if err != nil {
+		printError(err)
 		os.Exit(1)
 	}
 
+	reg := &registry.ClaimRegistry{Claims: all}
 	entries := registry.FilterEntries(reg, listCategory, listTemplate)
 
 	if len(entries) == 0 {
@@ -70,14 +228,25 @@ func runList(cmd *cobra.Command, args []string) {
 	}
 }
 
+func dash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
 func printTable(entries []registry.ClaimEntry) {
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "NAME\tTEMPLATE\tCATEGORY\tNAMESPACE\tSTATUS\tCREATED BY\tSOURCE")
-	_, _ = fmt.Fprintln(w, "----\t--------\t--------\t---------\t------\t----------\t------")
+	writeTable(os.Stdout, entries)
+}
+
+func writeTable(out io.Writer, entries []registry.ClaimEntry) {
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "NAME\tTEMPLATE\tCATEGORY\tNAMESPACE\tSTATUS\tCREATED BY\tSOURCE\tPATH")
+	_, _ = fmt.Fprintln(w, "----\t--------\t--------\t---------\t------\t----------\t------\t----")
 
 	for _, e := range entries {
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			e.Name, e.Template, e.Category, e.Namespace, e.Status, e.CreatedBy, e.Source)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			e.Name, dash(e.Template), dash(e.Category), dash(e.Namespace), dash(e.Status), dash(e.CreatedBy), dash(e.Source), dash(e.Path))
 	}
 
 	_ = w.Flush()
@@ -86,7 +255,7 @@ func printTable(entries []registry.ClaimEntry) {
 func printJSON(entries []registry.ClaimEntry) {
 	data, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
-		fmt.Println(errorStyle.Render(fmt.Sprintf("Error marshalling JSON: %v", err)))
+		fmt.Fprintln(os.Stderr, errorStyle.Render(fmt.Sprintf("Error marshalling JSON: %v", err)))
 		os.Exit(1)
 	}
 	fmt.Println(string(data))

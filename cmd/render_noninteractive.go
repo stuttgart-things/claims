@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/stuttgart-things/claims/internal/params"
@@ -76,13 +77,14 @@ func runNonInteractive(config *RenderConfig) error {
 	}
 
 	// Render all templates
+	progress := config.progressOut()
 	var results []RenderResult
 	for _, tp := range templateParams {
-		fmt.Printf("Rendering %s...\n", tp.Name)
+		_, _ = fmt.Fprintf(progress, "Rendering %s...\n", tp.Name)
 
 		content, err := client.RenderTemplate(tp.Name, tp.Parameters)
 		if err != nil {
-			fmt.Printf("  ERROR: %v\n", err)
+			_, _ = fmt.Fprintf(progress, "  ERROR: %v\n", err)
 			results = append(results, RenderResult{
 				TemplateName: tp.Name,
 				Error:        err,
@@ -110,7 +112,12 @@ func runNonInteractive(config *RenderConfig) error {
 			Content:      content,
 			Params:       tp.Parameters,
 		})
-		fmt.Printf("  Rendered successfully\n")
+		_, _ = fmt.Fprintf(progress, "  Rendered successfully\n")
+	}
+
+	// --stdout: the YAML to stdout, nothing written, no registry, no git.
+	if config.Stdout {
+		return writeStdout(os.Stdout, results, templateParams, templateLookup, config)
 	}
 
 	// The source-path layout: the order names its files; no --output-dir
@@ -213,5 +220,27 @@ func runNonInteractive(config *RenderConfig) error {
 		return fmt.Errorf("some templates failed to render")
 	}
 
+	return nil
+}
+
+// writeStdout prints the successful renders as one YAML stream to out.
+// Secrets are not generated (they would need files and SOPS); a note on
+// stderr says so.
+func writeStdout(out io.Writer, results []RenderResult, templateParams []params.TemplateParams, lookup map[string]*templates.ClaimTemplate, config *RenderConfig) error {
+	if _, err := io.WriteString(out, renderedYAML(results)); err != nil {
+		return err
+	}
+	if !config.SkipSecrets {
+		for _, tp := range templateParams {
+			if t := lookup[tp.Name]; t != nil && len(t.Spec.Secrets) > 0 {
+				_, _ = fmt.Fprintf(os.Stderr, "Note: %s defines secrets; --stdout does not generate them\n", tp.Name)
+			}
+		}
+	}
+	for _, r := range results {
+		if r.Error != nil {
+			return fmt.Errorf("some templates failed to render")
+		}
+	}
 	return nil
 }

@@ -6,13 +6,14 @@ import (
 
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
-	"github.com/stuttgart-things/claims/internal/banner"
 )
 
 var (
 	apiURL          string
 	outputDir       string
 	dryRun          bool
+	fullPreview     bool
+	toStdout        bool
 	singleFile      bool
 	filenamePattern string
 	templateNames   []string
@@ -48,16 +49,19 @@ var (
 )
 
 var renderCmd = &cobra.Command{
-	Use:   "render",
-	Short: "Render a claim template interactively",
-	Long:  `Connects to the claim-machinery API, fetches available templates, and provides an interactive form to render claims.`,
-	Run:   runRender,
+	Use:     "render",
+	GroupID: groupClaims,
+	Short:   "Render claim templates, save locally or via Git PR",
+	Long:    `Connects to the claim-machinery API, fetches available templates, and provides an interactive form to render claims.`,
+	Run:     runRender,
 }
 
 func init() {
 	renderCmd.Flags().StringVarP(&apiURL, "api-url", "a", "", "API URL (default: $CLAIM_API_URL or http://localhost:8080)")
 	renderCmd.Flags().StringVarP(&outputDir, "output-dir", "o", ".", "Output directory for rendered files")
 	renderCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print output without writing files")
+	renderCmd.Flags().BoolVar(&fullPreview, "full", false, "Interactive review: show the complete YAML instead of the first lines")
+	renderCmd.Flags().BoolVar(&toStdout, "stdout", false, "Print the rendered YAML to stdout and write nothing (non-interactive; progress goes to stderr)")
 	renderCmd.Flags().BoolVar(&singleFile, "single-file", false, "Combine all resources into one file")
 	renderCmd.Flags().StringVar(&filenamePattern, "filename-pattern", "{{.template}}-{{.name}}.yaml", "Pattern for output filenames")
 	renderCmd.Flags().StringSliceVarP(&templateNames, "templates", "t", nil, "Templates to render (comma-separated or repeated)")
@@ -96,8 +100,23 @@ func init() {
 	rootCmd.AddCommand(renderCmd)
 }
 
+// validateStdout rejects flags that do not go with --stdout, which only
+// prints the rendered YAML.
+func validateStdout(config *RenderConfig, forceInteractive bool) error {
+	switch {
+	case forceInteractive:
+		return fmt.Errorf("--stdout is non-interactive; drop --interactive")
+	case config.GitConfig != nil || config.PRConfig != nil:
+		return fmt.Errorf("--stdout writes nothing; it does not combine with --git-* or --create-pr/--pr-* flags")
+	case config.Layout != "":
+		return fmt.Errorf("--stdout writes nothing; it does not combine with --layout")
+	case config.DryRun:
+		return fmt.Errorf("--stdout already writes nothing; drop --dry-run")
+	}
+	return nil
+}
+
 func runRender(cmd *cobra.Command, args []string) {
-	banner.Show()
 
 	// Get API URL from flag, environment, or default.
 	// CLAIM_API_URL supports colon-separated multiple endpoints (URL colons preserved).
@@ -122,6 +141,8 @@ func runRender(cmd *cobra.Command, args []string) {
 		FilenamePattern:  filenamePattern,
 		SingleFile:       singleFile,
 		DryRun:           dryRun,
+		FullPreview:      fullPreview,
+		Stdout:           toStdout,
 		FileMode:         fileMode,
 		Layout:           layoutName,
 	}
@@ -153,7 +174,12 @@ func runRender(cmd *cobra.Command, args []string) {
 	}
 
 	// Determine mode
-	if nonInteractive {
+	if config.Stdout {
+		if err := validateStdout(config, interactive); err != nil {
+			exitOn(err)
+		}
+		config.Interactive = false
+	} else if nonInteractive {
 		config.Interactive = false
 	} else if interactive {
 		config.Interactive = true
@@ -184,23 +210,17 @@ func runRender(cmd *cobra.Command, args []string) {
 		} else {
 			selectedURL, promptErr = promptAPIURL(config.APIUrls[0])
 		}
-		if promptErr != nil {
-			fmt.Printf("Error: %v\n", promptErr)
-			os.Exit(1)
-		}
+		exitOn(promptErr)
 		config.APIUrl = selectedURL
-		fmt.Printf("\nConnecting to API: %s\n\n", config.APIUrl)
+		fmt.Printf("\nConnecting to API: %s\n", config.APIUrl)
 
 		err = runInteractive(config)
 	} else {
 		// Non-interactive: use first URL
 		config.APIUrl = config.APIUrls[0]
-		fmt.Printf("Connecting to API: %s\n\n", config.APIUrl)
+		_, _ = fmt.Fprintf(config.progressOut(), "Connecting to API: %s\n\n", config.APIUrl)
 		err = runNonInteractive(config)
 	}
 
-	if err != nil {
-		fmt.Println(errorStyle.Render(err.Error()))
-		os.Exit(1)
-	}
+	exitOn(err)
 }

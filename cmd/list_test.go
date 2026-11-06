@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -130,4 +131,161 @@ func TestPrintJSON(t *testing.T) {
 	if parsed[1].Namespace != "production" {
 		t.Errorf("expected second entry namespace production, got %s", parsed[1].Namespace)
 	}
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const listTestRegistry = `apiVersion: claim-registry.io/v1alpha1
+kind: ClaimRegistry
+claims:
+  - name: flux-infra
+    template: flux-gitrepository
+    status: active
+`
+
+func listTestXR(name, file string) string {
+	return `apiVersion: resources.stuttgart-things.com/v1alpha1
+kind: NativeVsphereVM
+metadata:
+  name: ` + name + `
+  annotations:
+    stuttgart-things.com/source-path: ` + file + `
+---
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: env
+`
+}
+
+// listFixtureRepo builds a fleet repo: .git, optional registry, optional orders dir.
+func listFixtureRepo(t *testing.T, withRegistry, withXRs bool) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if withRegistry {
+		writeFile(t, filepath.Join(root, "claims", "registry.yaml"), listTestRegistry)
+	}
+	if withXRs {
+		f := "clusters/labda/vsphere/machinery-orders-xrs/demo.yaml"
+		writeFile(t, filepath.Join(root, filepath.FromSlash(f)), listTestXR("demo-vm", f))
+	}
+	return root
+}
+
+func noEnv(string) string { return "" }
+
+func TestResolveListLocation(t *testing.T) {
+	repo := listFixtureRepo(t, true, true)
+	sub := filepath.Join(repo, "clusters", "labda")
+	outside := t.TempDir()
+	custom := filepath.Join(outside, "my-registry.yaml")
+	writeFile(t, custom, listTestRegistry)
+
+	tests := []struct {
+		name         string
+		opts         listOptions
+		wantRoot     string
+		wantRegistry string
+		wantExplicit bool
+	}{
+		{"default from a subdirectory", listOptions{Cwd: sub, Getenv: noEnv}, repo, filepath.Join(repo, "claims", "registry.yaml"), false},
+		{"outside any repo", listOptions{Cwd: outside, Getenv: noEnv}, "", filepath.Join(outside, "claims", "registry.yaml"), false},
+		{"--repo", listOptions{Repo: repo, Cwd: outside, Getenv: noEnv}, repo, filepath.Join(repo, "claims", "registry.yaml"), false},
+		{"CLAIMS_REPO", listOptions{Cwd: outside, Getenv: func(k string) string {
+			if k == envRepo {
+				return repo
+			}
+			return ""
+		}}, repo, filepath.Join(repo, "claims", "registry.yaml"), false},
+		{"--registry absolute", listOptions{Registry: custom, Cwd: sub, Getenv: noEnv}, repo, custom, true},
+		{"--registry relative to cwd", listOptions{Registry: "my-registry.yaml", Cwd: outside, Getenv: noEnv}, "", custom, true},
+		{"--registry relative to repo", listOptions{Registry: "claims/registry.yaml", Cwd: sub, Getenv: noEnv}, repo, filepath.Join(repo, "claims", "registry.yaml"), true},
+		{"CLAIMS_REGISTRY beats default", listOptions{Cwd: sub, Getenv: func(k string) string {
+			if k == envRegistry {
+				return custom
+			}
+			return ""
+		}}, repo, custom, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loc := resolveListLocation(tt.opts)
+			if loc.RepoRoot != tt.wantRoot || loc.RegistryPath != tt.wantRegistry || loc.RegistryExplicit != tt.wantExplicit {
+				t.Errorf("got %+v, want root=%q registry=%q explicit=%v", loc, tt.wantRoot, tt.wantRegistry, tt.wantExplicit)
+			}
+		})
+	}
+}
+
+func TestCollectClaims(t *testing.T) {
+	names := func(es []registry.ClaimEntry) string {
+		var out []string
+		for _, e := range es {
+			out = append(out, e.Name+"/"+e.Source)
+		}
+		return strings.Join(out, ",")
+	}
+
+	t.Run("registry and xrs", func(t *testing.T) {
+		repo := listFixtureRepo(t, true, true)
+		got, err := collectClaims(resolveListLocation(listOptions{Cwd: repo, Getenv: noEnv}), listSourceAll)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if names(got) != "flux-infra/,demo-vm/xrs" {
+			t.Errorf("got %s", names(got))
+		}
+		xr := got[1]
+		if xr.Template != "NativeVsphereVM" || xr.Path != "clusters/labda/vsphere/machinery-orders-xrs/demo.yaml" || xr.Namespace != "default" {
+			t.Errorf("xr entry = %+v", xr)
+		}
+	})
+
+	t.Run("source filter", func(t *testing.T) {
+		repo := listFixtureRepo(t, true, true)
+		loc := resolveListLocation(listOptions{Cwd: repo, Getenv: noEnv})
+		if got, _ := collectClaims(loc, listSourceXRs); names(got) != "demo-vm/xrs" {
+			t.Errorf("xrs: got %s", names(got))
+		}
+		if got, _ := collectClaims(loc, listSourceRegistry); names(got) != "flux-infra/" {
+			t.Errorf("registry: got %s", names(got))
+		}
+		if _, err := collectClaims(loc, "bogus"); err == nil {
+			t.Error("unknown source: want error")
+		}
+	})
+
+	t.Run("missing default registry is fine with xrs", func(t *testing.T) {
+		repo := listFixtureRepo(t, false, true)
+		got, err := collectClaims(resolveListLocation(listOptions{Cwd: repo, Getenv: noEnv}), listSourceAll)
+		if err != nil || names(got) != "demo-vm/xrs" {
+			t.Errorf("got %s, %v", names(got), err)
+		}
+	})
+
+	t.Run("explicit missing registry is an error with hint", func(t *testing.T) {
+		repo := listFixtureRepo(t, false, true)
+		_, err := collectClaims(resolveListLocation(listOptions{Registry: "nope.yaml", Cwd: repo, Getenv: noEnv}), listSourceAll)
+		if err == nil || !strings.Contains(err.Error(), "--registry") {
+			t.Errorf("want error with hint, got %v", err)
+		}
+	})
+
+	t.Run("outside a repo: error with hint", func(t *testing.T) {
+		_, err := collectClaims(resolveListLocation(listOptions{Cwd: t.TempDir(), Getenv: noEnv}), listSourceAll)
+		if err == nil || !strings.Contains(err.Error(), "CLAIMS_REPO") {
+			t.Errorf("want error with hint, got %v", err)
+		}
+	})
 }

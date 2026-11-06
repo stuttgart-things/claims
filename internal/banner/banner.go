@@ -51,25 +51,37 @@ type model struct {
 	done         bool
 }
 
-// Version info, set from cmd package via SetVersionInfo before calling Show.
-var (
-	versionStr = "dev"
-	commitStr  = "none"
-	buildStr   = "unknown"
-)
+// versionLine is shown under the logo; set from the cmd package via
+// SetVersionLine (see internal/buildinfo). Unknown fields are left out there.
+var versionLine string
 
-// SetVersionInfo sets version details displayed in the banner.
-func SetVersionInfo(version, commit, buildDate string) {
-	versionStr = version
-	commitStr = commit
-	buildStr = buildDate
+// SetVersionLine sets the version line displayed in the banner.
+func SetVersionLine(line string) {
+	versionLine = line
 }
 
-// Show displays the animated banner when running in a TTY,
-// or prints a static logo otherwise.
+func isTTY(f *os.File) bool {
+	return isatty.IsTerminal(f.Fd()) || isatty.IsCygwinTerminal(f.Fd())
+}
+
+// Enabled reports whether the banner is shown at all: only on a terminal
+// and only when NO_COLOR is not set (https://no-color.org).
+func Enabled() bool {
+	if _, noColor := os.LookupEnv("NO_COLOR"); noColor {
+		return false
+	}
+	return isTTY(os.Stdout)
+}
+
+// Show displays the banner: animated when stdin and stdout are terminals,
+// static when only stdout is, and not at all when stdout is not a terminal
+// or NO_COLOR is set.
 func Show() {
-	if !isatty.IsTerminal(os.Stdin.Fd()) && !isatty.IsCygwinTerminal(os.Stdin.Fd()) {
-		fmt.Println(renderGradient())
+	if !Enabled() {
+		return
+	}
+	if !isTTY(os.Stdin) {
+		fmt.Print(renderGradient())
 		return
 	}
 
@@ -112,16 +124,15 @@ func renderGradient() string {
 		pad = 0
 	}
 	result.WriteString(subtitleStyle.Render(strings.Repeat(" ", pad) + subtitle))
-	result.WriteString("\n\n")
+	result.WriteString("\n")
 
-	// Version info
-	versionLine := fmt.Sprintf("Version: %s | Commit: %s | Built: %s", versionStr, commitStr, buildStr)
-	vPad := (maxWidth - len(versionLine)) / 2
-	if vPad < 0 {
-		vPad = 0
+	// Version info, flush left like the "Usage:" of the help below it
+	if versionLine != "" {
+		result.WriteString("\n")
+		result.WriteString(dimInfoStyle.Render(versionLine))
+		result.WriteString("\n")
 	}
-	result.WriteString(dimInfoStyle.Render(strings.Repeat(" ", vPad) + versionLine))
-	result.WriteString("\n\n")
+	result.WriteString("\n")
 	return result.String()
 }
 

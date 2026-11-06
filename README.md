@@ -38,11 +38,11 @@ go build -o claims .
 
 | Command | Description |
 |---------|-------------|
-| `claims render` | Interactively render a claim template via API |
+| `claims render` | Render claim templates, save locally or via Git PR |
 | `claims encrypt` | Create a SOPS-encrypted Kubernetes Secret via Git PR |
 | `claims delete` | Delete a claim via Git PR |
-| `claims change` | Resize a VM claim via a change-claim PR |
-| `claims list` | List claims from the registry |
+| `claims change` (alias `resize`) | Change a claim (VM size) via Git PR |
+| `claims list` | List claims (registry and `*-xrs` directories) |
 | `claims login` | Log in to claim-machinery-api with ZITADEL (device flow) |
 | `claims logout` | Forget the cached login for an API URL |
 | `claims whoami` | Show the user, roles and groups claims sends to the API |
@@ -67,6 +67,8 @@ claims render [flags]
 | `--params-file` | `-f` | YAML file with templates and parameters for batch rendering |
 | `--output-dir` | `-o` | Output directory for rendered files (default: `/tmp`) |
 | `--dry-run` | | Print output without writing files |
+| `--stdout` | | Print the rendered YAML to stdout, write nothing (non-interactive; progress on stderr) |
+| `--full` | | Interactive review: show the complete YAML instead of the first 15 lines |
 | `--single-file` | | Combine all resources into one file |
 | `--filename-pattern` | | Pattern for output filenames (default: `{{.template}}-{{.name}}.yaml`) |
 | `--file-mode` | | File write mode: `overwrite` (default) or `append` |
@@ -278,6 +280,9 @@ CLAIM_API_URL=http://localhost:8080 claims render --non-interactive \
 
 # Batch rendering with params file
 claims render --non-interactive -f params.yaml -o ./out
+
+# YAML to stdout only (no files, no registry, no git), e.g. to pipe it on
+claims render -t vspherevm -p name=my-vm --stdout | kubectl apply --dry-run=client -f -
 ```
 
 **Params file format (`params.yaml`):**
@@ -412,6 +417,19 @@ claims render --non-interactive --layout source-path -o ~/projects/stuttgart-thi
 ```
 
 Start from an up-to-date `main`: the branch is created from the current HEAD.
+
+### list
+
+```bash
+claims list [--source all|registry|xrs] [--repo DIR] [--registry FILE] [--template T] [--category C] [-o table|json]
+```
+
+Lists the claims of the fleet repository from two places: `claims/registry.yaml`
+(written by `claims render`) and the XRs in `clusters/<lab>/<infra>/*-xrs/*.yaml`
+(e.g. the VM orders in `machinery-orders-xrs/`; TEMPLATE shows the kind, PATH the
+file; run-once runs are left out). The repository is the git repository around
+the current directory, or `--repo` / `$CLAIMS_REPO`; the registry is
+`--registry` / `$CLAIMS_REGISTRY` or `<repo>/claims/registry.yaml`.
 
 ### delete: XRs in `*-xrs` directories
 
@@ -577,15 +595,21 @@ The `claims render` command follows an interactive workflow:
 4. **Render** - Call the API to generate YAML
 5. **Review** - Preview rendered resources with options to:
    - Continue to save
+   - Show full YAML (through `$PAGER`, default `less -FRX`; or start with `--full`)
    - Edit a template's parameters (re-renders after editing)
    - Cancel the operation
-6. **Output** - Configure where and how to save files
+6. **Output** - Configure where and how to save files. The directory picker
+   starts in the directory of the order's `stuttgart-things.com/source-path`
+   annotation (relative to the git repository root) when there is one.
 7. **Git Operations** - Optionally commit/push rendered files:
    - None (just save locally)
    - Commit to current branch
    - Commit to new branch
    - Commit and push to remote
    - Commit, push & create PR (with PR details form)
+
+Ctrl+C / Esc aborts with `Aborted, nothing written.` and exit code 130. After
+rendering, the abort offers to print the YAML or save it to a temp file first.
 
 ## Configuration
 
@@ -600,6 +624,9 @@ The `claims render` command follows an interactive workflow:
 | `GIT_USER` | Git username for push operations | - |
 | `GIT_TOKEN` | Git token/password for push operations | - |
 | `GITHUB_TOKEN` | GitHub token (fallback for `GIT_TOKEN`) | - |
+| `CLAIMS_REPO` | Fleet repository root for `claims list` | git root of the cwd |
+| `CLAIMS_REGISTRY` | `registry.yaml` for `claims list` | `<repo>/claims/registry.yaml` |
+| `NO_COLOR` | No banner (the banner is also left out when stdout is not a terminal) | - |
 | `SOPS_AGE_RECIPIENTS` | age public key for SOPS encryption (required for `encrypt`) | - |
 
 ## Available Tasks
@@ -610,7 +637,9 @@ task --list
 
 | Task | Description |
 |------|-------------|
-| `task build` | Build the binary |
+| `task build` | Build the binary (Dagger) |
+| `task build-local` | `go build` to `./bin/claims` with version, commit and date via ldflags |
+| `task install-local` | Unit tests, `build-local`, install to `~/.local/bin` |
 | `task render` | Run render in non-interactive mode with params file |
 | `task render-inline` | Run render in non-interactive mode with inline params |
 | `task test-gitops` | Run GitOps integration tests |

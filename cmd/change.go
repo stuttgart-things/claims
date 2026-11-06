@@ -13,7 +13,6 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
-	"github.com/stuttgart-things/claims/internal/banner"
 	"github.com/stuttgart-things/claims/internal/gitops"
 	"github.com/stuttgart-things/claims/internal/xrdelete"
 )
@@ -54,8 +53,10 @@ var changeFlags ChangeConfig
 var changeInteractive bool
 
 var changeCmd = &cobra.Command{
-	Use:   "change",
-	Short: "Resize a VM claim via a change-claim PR",
+	Use:     "change",
+	Aliases: []string{"resize"},
+	GroupID: groupClaims,
+	Short:   "Change a claim (VM size) via Git PR",
 	Long: `Resize a VM claim (NativeVsphereVM, NativeProxmoxVM) in an *-xrs directory of
 the fleet repository.
 
@@ -75,7 +76,6 @@ Needs the gh CLI, logged in with permission to run workflows.`,
   claims change --name dev7-vm --size xlarge --dry-run`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		banner.Show()
 		cfg := changeFlags
 		if cfg.RequestedBy == "" {
 			cfg.RequestedBy, _ = gitops.ResolveCredentialsOptional("", "")

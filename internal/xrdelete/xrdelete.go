@@ -183,6 +183,44 @@ func Scan(repoRoot string) ([]XR, error) {
 	return out, nil
 }
 
+// List returns every XR of the *-xrs directories for display (claims list):
+// unlike Scan it keeps files with several XRs, refused kinds and XRs whose
+// source-path does not match, and leaves out only the run-once
+// ScheduledRuns (they are runs, not claims). Unparsable files are skipped.
+func List(repoRoot string) ([]XR, error) {
+	dirs, err := XRSDirs(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	var out []XR
+	for _, d := range dirs {
+		entries, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(d)))
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") || e.Name() == kustomizationFile {
+				continue
+			}
+			file := path.Join(d, e.Name())
+			data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(file)))
+			if err != nil {
+				return nil, err
+			}
+			xrs, err := ParseXRs(data, file)
+			if err != nil {
+				continue
+			}
+			for _, x := range xrs {
+				if !x.isRunOnce() {
+					out = append(out, x)
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
 // Find returns the claim kind/namespace/name among the deletable claims.
 func Find(repoRoot, kind, name, namespace string) (XR, error) {
 	if namespace == "" {

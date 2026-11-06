@@ -93,9 +93,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 				for i, s := range tmpl.Spec.Secrets {
 					secretNames[i] = s.Name
 				}
-				fmt.Printf("\n%s\n", progressStyle.Render(
-					fmt.Sprintf("Note: %s will render %d resources:", tmpl.Metadata.Title, 1+len(tmpl.Spec.Secrets)),
-				))
+				printSection(progressStyle, fmt.Sprintf("Note: %s will render %d resources:", tmpl.Metadata.Title, 1+len(tmpl.Spec.Secrets)))
 				fmt.Printf("  1. %s (rendered via API)\n", tmpl.Spec.Type)
 				for i, sn := range secretNames {
 					fmt.Printf("  %d. Encrypted Secret: %s (encrypted locally with SOPS)\n", i+2, sn)
@@ -118,9 +116,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 				continue
 			}
 
-			fmt.Printf("\n%s\n", progressStyle.Render(
-				fmt.Sprintf("━━━ Secret values for: %s ━━━", tmpl.Metadata.Title),
-			))
+			printSection(progressStyle, fmt.Sprintf("━━━ Secret values for: %s ━━━", tmpl.Metadata.Title))
 			fmt.Println("Values are encrypted locally with SOPS and never sent to the API.")
 
 			secretValues, err := collectInteractiveSecrets(tmpl, tp.Params)
@@ -157,11 +153,20 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 	fmt.Println("\nRendering templates...")
 	results := renderAllTemplates(client, allParams)
 
+	// From here on an abort would lose the rendered output (and the minutes
+	// of input behind it): offer to print it or keep it in a temp file.
+	fail := func(step string, err error) error {
+		if isAbort(err) {
+			return &abortError{note: rescueRendered(results)}
+		}
+		return fmt.Errorf("%s: %w", step, err)
+	}
+
 	// Review loop - allows going back to edit parameters
 	for {
-		action, editIndex, err := ReviewResults(results)
+		action, editIndex, err := ReviewResults(results, config.FullPreview)
 		if err != nil {
-			return fmt.Errorf("review: %w", err)
+			return fail("review", err)
 		}
 
 		switch action {
@@ -173,12 +178,14 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			// Re-collect params for selected template
 			tmpl := templateMap[results[editIndex].TemplateName]
 
-			fmt.Printf("\n%s\n", progressStyle.Render(
-				fmt.Sprintf("━━━ Editing: %s ━━━", tmpl.Metadata.Title),
-			))
+			printSection(progressStyle, fmt.Sprintf("━━━ Editing: %s ━━━", tmpl.Metadata.Title))
 			fmt.Printf("%s\n\n", tmpl.Metadata.Description)
 
 			newParams, err := collectTemplateParams(tmpl)
+			if isAbort(err) {
+				fmt.Println("Edit cancelled, keeping the previous render.")
+				continue // Stay in review loop
+			}
 			if err != nil {
 				fmt.Printf("Error collecting parameters: %v\n", err)
 				continue // Stay in review loop
@@ -201,8 +208,12 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			}
 			continue // Loop back to review
 
+		case ReviewActionFull:
+			showFullResults(results)
+			continue // Loop back to review
+
 		case ReviewActionCancel:
-			fmt.Println("Cancelled.")
+			fmt.Println("Cancelled, nothing written.")
 			return nil
 		}
 
@@ -221,7 +232,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 		return fmt.Errorf("no successful renders to save")
 	}
 
-	fmt.Println(successStyle.Render(fmt.Sprintf("\n%d/%d ready to save", successCount, len(results))))
+	printSection(successStyle, fmt.Sprintf("%d/%d ready to save", successCount, len(results)))
 
 	// Build output config from flags or run interactive form
 	var outputConfig OutputConfig
@@ -252,13 +263,13 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			// First ask: git or save locally?
 			destChoice, err := runDestinationChoice()
 			if err != nil {
-				return fmt.Errorf("destination choice: %w", err)
+				return fail("destination choice", err)
 			}
 
 			// Run interactive output form with git validation if needed
-			formConfig, goBack, err := runOutputFormWithValidation(destChoice.useGit, successCount, exampleTemplate, exampleName)
+			formConfig, goBack, err := runOutputFormWithValidation(destChoice.useGit, successCount, exampleTemplate, exampleName, suggestOutput(results))
 			if err != nil {
-				return fmt.Errorf("output configuration: %w", err)
+				return fail("output configuration", err)
 			}
 			if goBack {
 				// User wants to go back and change destination choice
@@ -274,7 +285,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			if destChoice.useGit {
 				gitConfig, err := runGitDetailsForm(destChoice.createPR)
 				if err != nil {
-					return fmt.Errorf("git options: %w", err)
+					return fail("git options", err)
 				}
 				config.GitConfig = gitConfig
 
@@ -282,7 +293,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 				if destChoice.createPR {
 					prConfig, err := runPROptionsForm()
 					if err != nil {
-						return fmt.Errorf("PR options: %w", err)
+						return fail("PR options", err)
 					}
 					config.PRConfig = prConfig
 				}
@@ -320,9 +331,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			continue
 		}
 
-		fmt.Printf("\n%s\n", progressStyle.Render(
-			fmt.Sprintf("━━━ Encrypting secrets for: %s ━━━", tmpl.Metadata.Title),
-		))
+		printSection(progressStyle, fmt.Sprintf("━━━ Encrypting secrets for: %s ━━━", tmpl.Metadata.Title))
 
 		secretResults, err := processTemplateSecrets(tmpl, r.Params, secretValues, config)
 		if err != nil {
@@ -418,9 +427,22 @@ func getSubfolders(basePath string) ([]string, error) {
 // selectDirectory runs an interactive directory picker
 // Returns the selected directory path
 func selectDirectory(startPath string) (string, error) {
+	return selectDirectoryWithSuggestion(startPath, "")
+}
+
+// selectDirectoryWithSuggestion is selectDirectory with a suggested
+// directory (relative to the cwd, e.g. from the source-path annotation): the
+// picker starts there when it exists, and offers it as the first option
+// wherever the user navigates (it is created on demand).
+func selectDirectoryWithSuggestion(startPath, suggested string) (string, error) {
 	currentPath := startPath
 	if currentPath == "" {
 		currentPath = "."
+	}
+	if suggested != "" {
+		if fi, err := os.Stat(suggested); err == nil && fi.IsDir() {
+			currentPath = suggested
+		}
 	}
 
 	// Resolve to absolute path for display
@@ -438,6 +460,10 @@ func selectDirectory(startPath string) (string, error) {
 
 		// Build options
 		var options []huh.Option[string]
+
+		if suggested != "" && filepath.Clean(currentPath) != filepath.Clean(suggested) {
+			options = append(options, huh.NewOption(fmt.Sprintf("★ Suggested: %s (source-path)", suggested), "__suggested__"))
+		}
 
 		// Option to use current directory
 		displayPath := currentPath
@@ -462,7 +488,7 @@ func selectDirectory(startPath string) (string, error) {
 		options = append(options, huh.NewOption("➕ Create new folder...", "__create__"))
 
 		// Option to enter path manually
-		options = append(options, huh.NewOption("✏️  Enter path manually...", "__manual__"))
+		options = append(options, huh.NewOption("✎ Enter path manually...", "__manual__"))
 
 		var choice string
 		form := huh.NewForm(
@@ -482,6 +508,9 @@ func selectDirectory(startPath string) (string, error) {
 		switch choice {
 		case "__use_current__":
 			return currentPath, nil
+
+		case "__suggested__":
+			return suggested, nil
 
 		case "__parent__":
 			if currentPath == "." {
@@ -618,16 +647,23 @@ func manualDirectoryInput(defaultPath string) (string, error) {
 
 // runOutputFormWithValidation runs the output form and validates git repo if needed
 // Returns OutputConfig, shouldGoBack (to change destination), and error
-func runOutputFormWithValidation(requireGitRepo bool, resultCount int, exampleTemplate, exampleName string) (*OutputConfig, bool, error) {
+func runOutputFormWithValidation(requireGitRepo bool, resultCount int, exampleTemplate, exampleName string, suggestion outputSuggestion) (*OutputConfig, bool, error) {
 	var (
 		outputDirectory = "."
 		outputMode      = "separate"
 		pattern         = "{{.template}}-{{.name}}.yaml"
 	)
 
+	// The file the order names for itself is {{.name}}.yaml: preselect that
+	// pattern so the file lands where its source-path says.
+	nameOnlyMatches := resultCount == 1 && suggestion.File != "" && suggestion.File == exampleName+".yaml"
+	if nameOnlyMatches {
+		pattern = "{{.name}}.yaml"
+	}
+
 	// Ask for output directory with validation using the directory picker
 	for {
-		selectedDir, err := selectDirectory(".")
+		selectedDir, err := selectDirectoryWithSuggestion(".", suggestion.Dir)
 		if err != nil {
 			return nil, false, err
 		}
@@ -695,6 +731,9 @@ func runOutputFormWithValidation(requireGitRepo bool, resultCount int, exampleTe
 		// Build example filename for preview
 		exampleDefault := fmt.Sprintf("%s-%s.yaml", exampleTemplate, exampleName)
 		exampleNameOnly := fmt.Sprintf("%s.yaml", exampleName)
+		if nameOnlyMatches {
+			exampleNameOnly += " (source-path)"
+		}
 
 		patternForm := huh.NewForm(
 			huh.NewGroup(
@@ -1021,9 +1060,7 @@ func collectAllParams(selectedNames []string, templateMap map[string]*templates.
 		tmpl := templateMap[name]
 
 		// Show progress header
-		fmt.Printf("\n%s\n", progressStyle.Render(
-			fmt.Sprintf("━━━ Configuring: %s (%d/%d) ━━━", tmpl.Metadata.Title, i+1, len(selectedNames)),
-		))
+		printSection(progressStyle, fmt.Sprintf("━━━ Configuring: %s (%d/%d) ━━━", tmpl.Metadata.Title, i+1, len(selectedNames)))
 		fmt.Printf("%s\n\n", tmpl.Metadata.Description)
 
 		// Collect params for this template
