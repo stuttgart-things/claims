@@ -1,3 +1,16 @@
+# [0.21.0](https://github.com/stuttgart-things/claims/compare/v0.20.0...v0.21.0) (2026-11-06)
+
+
+### Bug Fixes
+
+* **release:** gate on tests, Conventional Commit PR titles, v-prefixed version ([#105](https://github.com/stuttgart-things/claims/issues/105)) ([0805bb8](https://github.com/stuttgart-things/claims/commit/0805bb8c745d9126187210c76883ab5629a6715d))
+
+
+### Features
+
+* **list:** --kind filter for the *-xrs claims ([#102](https://github.com/stuttgart-things/claims/issues/102)) ([d087c0a](https://github.com/stuttgart-things/claims/commit/d087c0a605103f8b7ef54648bede2045b9902335)), closes [#101](https://github.com/stuttgart-things/claims/issues/101)
+* **render:** offer the source-path layout in the interactive flow ([#103](https://github.com/stuttgart-things/claims/issues/103)) ([1179a3d](https://github.com/stuttgart-things/claims/commit/1179a3d8e25b483e40b0fd15be96c43fad38a1a1)), closes [#101](https://github.com/stuttgart-things/claims/issues/101)
+
 # [0.20.0](https://github.com/stuttgart-things/claims/compare/v0.19.0...v0.20.0) (2026-11-06)
 
 
