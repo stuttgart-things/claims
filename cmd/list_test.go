@@ -289,3 +289,39 @@ func TestCollectClaims(t *testing.T) {
 		}
 	})
 }
+
+func TestFilterKinds(t *testing.T) {
+	entries := []registry.ClaimEntry{
+		{Name: "flux-infra", Template: "flux-gitrepository", Source: "cli"},
+		{Name: "dev7-vm", Template: "NativeVsphereVM", Source: sourceXRs},
+		{Name: "runner-vm", Template: "NativeProxmoxVM", Source: sourceXRs},
+		{Name: "app-dev", Template: "ClusterStack", Source: sourceXRs},
+	}
+	names := func(es []registry.ClaimEntry) string {
+		var out []string
+		for _, e := range es {
+			out = append(out, e.Name)
+		}
+		return strings.Join(out, ",")
+	}
+	tests := []struct {
+		name        string
+		kinds       []string
+		want        string
+		wantDropped int
+	}{
+		{"no filter keeps all", nil, "flux-infra,dev7-vm,runner-vm,app-dev", 0},
+		{"blank values ignored", []string{" ", ""}, "flux-infra,dev7-vm,runner-vm,app-dev", 0},
+		{"one kind", []string{"NativeVsphereVM"}, "dev7-vm", 1},
+		{"several, case-insensitive", []string{"nativevspherevm", " NATIVEPROXMOXVM "}, "dev7-vm,runner-vm", 1},
+		{"unknown kind", []string{"Nope"}, "", 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, dropped := filterKinds(entries, tt.kinds)
+			if names(got) != tt.want || dropped != tt.wantDropped {
+				t.Errorf("got %q dropped %d, want %q dropped %d", names(got), dropped, tt.want, tt.wantDropped)
+			}
+		})
+	}
+}

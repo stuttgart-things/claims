@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -34,6 +35,7 @@ var (
 	listSource       string
 	listCategory     string
 	listTemplate     string
+	listKinds        []string
 	listOutput       string
 )
 
@@ -54,7 +56,7 @@ The repository is the git repository around the current directory, or
 the file exists there, else against the repository). A missing registry is fine
 as long as the repository has *-xrs directories.`,
 	Example: `  claims list
-  claims list --source xrs --template NativeVsphereVM
+  claims list --kind NativeVsphereVM,NativeProxmoxVM
   claims list --repo ~/projects/stuttgart-things -o json
   CLAIMS_REGISTRY=/path/to/registry.yaml claims list --source registry`,
 	Args: cobra.NoArgs,
@@ -69,6 +71,7 @@ func init() {
 	listCmd.Flags().StringVar(&listSource, "source", listSourceAll, "Where to read claims from: all, registry, xrs")
 	listCmd.Flags().StringVar(&listCategory, "category", "", "Filter by category")
 	listCmd.Flags().StringVar(&listTemplate, "template", "", "Filter by template (XRs: kind)")
+	listCmd.Flags().StringSliceVar(&listKinds, "kind", nil, "Only XRs of these kinds (comma-separated or repeated, case-insensitive); leaves out registry entries")
 	listCmd.Flags().StringVarP(&listOutput, "output", "o", "table", "Output format (table, json)")
 
 	rootCmd.AddCommand(listCmd)
@@ -214,6 +217,10 @@ func runList(cmd *cobra.Command, args []string) {
 
 	reg := &registry.ClaimRegistry{Claims: all}
 	entries := registry.FilterEntries(reg, listCategory, listTemplate)
+	entries, dropped := filterKinds(entries, listKinds)
+	if dropped > 0 {
+		fmt.Fprintf(os.Stderr, "Note: --kind leaves out %d registry entr%s (they have no kind)\n", dropped, map[bool]string{true: "y", false: "ies"}[dropped == 1])
+	}
 
 	if len(entries) == 0 {
 		fmt.Println("No claims found.")
@@ -226,6 +233,31 @@ func runList(cmd *cobra.Command, args []string) {
 	default:
 		printTable(entries)
 	}
+}
+
+// filterKinds keeps the XR entries whose kind is in kinds (case-insensitive;
+// empty kinds keeps everything). Registry entries have no kind and are left
+// out; dropped counts them.
+func filterKinds(entries []registry.ClaimEntry, kinds []string) (kept []registry.ClaimEntry, dropped int) {
+	want := map[string]bool{}
+	for _, k := range kinds {
+		if k = strings.TrimSpace(k); k != "" {
+			want[strings.ToLower(k)] = true
+		}
+	}
+	if len(want) == 0 {
+		return entries, 0
+	}
+	for _, e := range entries {
+		if e.Source != sourceXRs {
+			dropped++
+			continue
+		}
+		if want[strings.ToLower(e.Template)] {
+			kept = append(kept, e)
+		}
+	}
+	return kept, dropped
 }
 
 func dash(s string) string {
