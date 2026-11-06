@@ -267,7 +267,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			}
 
 			// Run interactive output form with git validation if needed
-			formConfig, goBack, err := runOutputFormWithValidation(destChoice.useGit, successCount, exampleTemplate, exampleName)
+			formConfig, goBack, err := runOutputFormWithValidation(destChoice.useGit, successCount, exampleTemplate, exampleName, suggestOutput(results))
 			if err != nil {
 				return fail("output configuration", err)
 			}
@@ -427,9 +427,22 @@ func getSubfolders(basePath string) ([]string, error) {
 // selectDirectory runs an interactive directory picker
 // Returns the selected directory path
 func selectDirectory(startPath string) (string, error) {
+	return selectDirectoryWithSuggestion(startPath, "")
+}
+
+// selectDirectoryWithSuggestion is selectDirectory with a suggested
+// directory (relative to the cwd, e.g. from the source-path annotation): the
+// picker starts there when it exists, and offers it as the first option
+// wherever the user navigates (it is created on demand).
+func selectDirectoryWithSuggestion(startPath, suggested string) (string, error) {
 	currentPath := startPath
 	if currentPath == "" {
 		currentPath = "."
+	}
+	if suggested != "" {
+		if fi, err := os.Stat(suggested); err == nil && fi.IsDir() {
+			currentPath = suggested
+		}
 	}
 
 	// Resolve to absolute path for display
@@ -447,6 +460,10 @@ func selectDirectory(startPath string) (string, error) {
 
 		// Build options
 		var options []huh.Option[string]
+
+		if suggested != "" && filepath.Clean(currentPath) != filepath.Clean(suggested) {
+			options = append(options, huh.NewOption(fmt.Sprintf("★ Suggested: %s (source-path)", suggested), "__suggested__"))
+		}
 
 		// Option to use current directory
 		displayPath := currentPath
@@ -491,6 +508,9 @@ func selectDirectory(startPath string) (string, error) {
 		switch choice {
 		case "__use_current__":
 			return currentPath, nil
+
+		case "__suggested__":
+			return suggested, nil
 
 		case "__parent__":
 			if currentPath == "." {
@@ -627,16 +647,23 @@ func manualDirectoryInput(defaultPath string) (string, error) {
 
 // runOutputFormWithValidation runs the output form and validates git repo if needed
 // Returns OutputConfig, shouldGoBack (to change destination), and error
-func runOutputFormWithValidation(requireGitRepo bool, resultCount int, exampleTemplate, exampleName string) (*OutputConfig, bool, error) {
+func runOutputFormWithValidation(requireGitRepo bool, resultCount int, exampleTemplate, exampleName string, suggestion outputSuggestion) (*OutputConfig, bool, error) {
 	var (
 		outputDirectory = "."
 		outputMode      = "separate"
 		pattern         = "{{.template}}-{{.name}}.yaml"
 	)
 
+	// The file the order names for itself is {{.name}}.yaml: preselect that
+	// pattern so the file lands where its source-path says.
+	nameOnlyMatches := resultCount == 1 && suggestion.File != "" && suggestion.File == exampleName+".yaml"
+	if nameOnlyMatches {
+		pattern = "{{.name}}.yaml"
+	}
+
 	// Ask for output directory with validation using the directory picker
 	for {
-		selectedDir, err := selectDirectory(".")
+		selectedDir, err := selectDirectoryWithSuggestion(".", suggestion.Dir)
 		if err != nil {
 			return nil, false, err
 		}
@@ -704,6 +731,9 @@ func runOutputFormWithValidation(requireGitRepo bool, resultCount int, exampleTe
 		// Build example filename for preview
 		exampleDefault := fmt.Sprintf("%s-%s.yaml", exampleTemplate, exampleName)
 		exampleNameOnly := fmt.Sprintf("%s.yaml", exampleName)
+		if nameOnlyMatches {
+			exampleNameOnly += " (source-path)"
+		}
 
 		patternForm := huh.NewForm(
 			huh.NewGroup(
