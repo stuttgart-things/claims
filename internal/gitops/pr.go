@@ -68,8 +68,8 @@ func CreatePR(config PRConfig, repoPath string) (*PRResult, error) {
 	}
 	ctx := context.Background()
 	pr, _, err := client.PullRequests.Create(ctx, owner, repo, github.CreatePullRequest{
-		Title: github.Ptr(config.Title),
-		Body:  github.Ptr(config.Description),
+		Title: new(config.Title),
+		Body:  new(config.Description),
 		Base:  config.BaseBranch,
 		Head:  head,
 	})

@@ -262,7 +262,7 @@ func runChange(cfg *ChangeConfig, interactive bool) error {
 		body[kv[0]] = kv[1]
 	}
 	details, _, err := api.c.Actions.CreateWorkflowDispatchEventByFileName(ctx, api.owner, api.repo, changeWorkflow,
-		github.CreateWorkflowDispatchEventRequest{Ref: cfg.Ref, Inputs: body, ReturnRunDetails: github.Ptr(true)})
+		github.CreateWorkflowDispatchEventRequest{Ref: cfg.Ref, Inputs: body, ReturnRunDetails: new(true)})
 	if err != nil {
 		return ghclient.Describe(err, fmt.Sprintf("starting %s on %s in %s", changeWorkflow, cfg.Ref, api))
 	}
