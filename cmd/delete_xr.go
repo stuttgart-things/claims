@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,6 +50,11 @@ func registryMissing(repoRoot, registryPath string) bool {
 // kind+name (searched in the *-xrs directories) or source-path (read from
 // the file).
 func resolveXR(repoRoot string, x *DeleteXRConfig) error {
+	return resolveXRFS(os.DirFS(repoRoot), x)
+}
+
+// resolveXRFS is resolveXR over a repository tree (checkout or GitHub ref).
+func resolveXRFS(fsys fs.FS, x *DeleteXRConfig) error {
 	if x.Namespace == "" {
 		x.Namespace = "default"
 	}
@@ -56,7 +62,7 @@ func resolveXR(repoRoot string, x *DeleteXRConfig) error {
 		if x.Name == "" {
 			return errors.New("--name (with --kind) or --source-path is required")
 		}
-		found, err := xrdelete.Find(repoRoot, x.Kind, x.Name, x.Namespace)
+		found, err := xrdelete.FindFS(fsys, x.Kind, x.Name, x.Namespace)
 		if err != nil {
 			return err
 		}
@@ -69,7 +75,7 @@ func resolveXR(repoRoot string, x *DeleteXRConfig) error {
 	if x.Kind != "" && x.Name != "" {
 		return nil
 	}
-	data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(x.SourcePath)))
+	data, err := fs.ReadFile(fsys, x.SourcePath)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", x.SourcePath, err)
 	}

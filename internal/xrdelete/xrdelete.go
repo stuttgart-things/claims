@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -130,42 +131,62 @@ func ParseXRs(data []byte, file string) ([]XR, error) {
 }
 
 // XRSDirs lists the *-xrs directories of the repository.
-func XRSDirs(repoRoot string) ([]string, error) {
-	matches, err := filepath.Glob(filepath.Join(repoRoot, "clusters", "*", "*", "*-xrs"))
+func XRSDirs(repoRoot string) ([]string, error) { return XRSDirsFS(os.DirFS(repoRoot)) }
+
+// XRSDirsFS lists the *-xrs directories of a repository tree (a checkout via
+// os.DirFS, or a GitHub ref via ghfs).
+func XRSDirsFS(fsys fs.FS) ([]string, error) {
+	matches, err := fs.Glob(fsys, "clusters/*/*/*-xrs")
 	if err != nil {
 		return nil, err
 	}
 	var dirs []string
 	for _, m := range matches {
-		if fi, err := os.Stat(m); err == nil && fi.IsDir() {
-			rel, _ := filepath.Rel(repoRoot, m)
-			dirs = append(dirs, filepath.ToSlash(rel))
+		if fi, err := fs.Stat(fsys, m); err == nil && fi.IsDir() {
+			dirs = append(dirs, m)
 		}
 	}
 	sort.Strings(dirs)
 	return dirs, nil
 }
 
+// yamlFiles returns the .yaml files of dir, repository-relative.
+func yamlFiles(fsys fs.FS, dir string) ([]string, error) {
+	entries, err := fs.ReadDir(fsys, dir)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".yaml") {
+			files = append(files, path.Join(dir, e.Name()))
+		}
+	}
+	return files, nil
+}
+
 // Scan returns the deletable claims of all *-xrs directories: files holding
 // exactly one XR whose source-path is the file, not a run-once ScheduledRun,
 // and not a refused kind.
-func Scan(repoRoot string) ([]XR, error) {
-	dirs, err := XRSDirs(repoRoot)
+func Scan(repoRoot string) ([]XR, error) { return ScanFS(os.DirFS(repoRoot)) }
+
+// ScanFS is Scan over a repository tree.
+func ScanFS(fsys fs.FS) ([]XR, error) {
+	dirs, err := XRSDirsFS(fsys)
 	if err != nil {
 		return nil, err
 	}
 	var out []XR
 	for _, d := range dirs {
-		entries, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(d)))
+		files, err := yamlFiles(fsys, d)
 		if err != nil {
 			return nil, err
 		}
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") || e.Name() == kustomizationFile {
+		for _, file := range files {
+			if path.Base(file) == kustomizationFile {
 				continue
 			}
-			file := path.Join(d, e.Name())
-			data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(file)))
+			data, err := fs.ReadFile(fsys, file)
 			if err != nil {
 				return nil, err
 			}
@@ -187,23 +208,25 @@ func Scan(repoRoot string) ([]XR, error) {
 // unlike Scan it keeps files with several XRs, refused kinds and XRs whose
 // source-path does not match, and leaves out only the run-once
 // ScheduledRuns (they are runs, not claims). Unparsable files are skipped.
-func List(repoRoot string) ([]XR, error) {
-	dirs, err := XRSDirs(repoRoot)
+func List(repoRoot string) ([]XR, error) { return ListFS(os.DirFS(repoRoot)) }
+
+// ListFS is List over a repository tree.
+func ListFS(fsys fs.FS) ([]XR, error) {
+	dirs, err := XRSDirsFS(fsys)
 	if err != nil {
 		return nil, err
 	}
 	var out []XR
 	for _, d := range dirs {
-		entries, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(d)))
+		files, err := yamlFiles(fsys, d)
 		if err != nil {
 			return nil, err
 		}
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") || e.Name() == kustomizationFile {
+		for _, file := range files {
+			if path.Base(file) == kustomizationFile {
 				continue
 			}
-			file := path.Join(d, e.Name())
-			data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(file)))
+			data, err := fs.ReadFile(fsys, file)
 			if err != nil {
 				return nil, err
 			}
@@ -223,10 +246,15 @@ func List(repoRoot string) ([]XR, error) {
 
 // Find returns the claim kind/namespace/name among the deletable claims.
 func Find(repoRoot, kind, name, namespace string) (XR, error) {
+	return FindFS(os.DirFS(repoRoot), kind, name, namespace)
+}
+
+// FindFS is Find over a repository tree.
+func FindFS(fsys fs.FS, kind, name, namespace string) (XR, error) {
 	if namespace == "" {
 		namespace = "default"
 	}
-	all, err := Scan(repoRoot)
+	all, err := ScanFS(fsys)
 	if err != nil {
 		return XR{}, err
 	}
@@ -276,6 +304,11 @@ func CheckPath(sourcePath string) error {
 // Plan checks that the claim kind/namespace/name lives alone in sourcePath
 // and works out what deleting it changes. Nothing is written.
 func Plan(repoRoot, kind, name, namespace, sourcePath string) (*Removal, error) {
+	return PlanFS(os.DirFS(repoRoot), kind, name, namespace, sourcePath)
+}
+
+// PlanFS is Plan over a repository tree.
+func PlanFS(fsys fs.FS, kind, name, namespace, sourcePath string) (*Removal, error) {
 	if namespace == "" {
 		namespace = "default"
 	}
@@ -288,9 +321,9 @@ func Plan(repoRoot, kind, name, namespace, sourcePath string) (*Removal, error) 
 	if err := CheckPath(sourcePath); err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(sourcePath)))
+	data, err := fs.ReadFile(fsys, sourcePath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("%s does not exist", sourcePath)
 		}
 		return nil, err
@@ -312,15 +345,15 @@ func Plan(repoRoot, kind, name, namespace, sourcePath string) (*Removal, error) 
 
 	r := &Removal{Claim: x}
 	dir := path.Dir(sourcePath)
-	r.Runs, err = runsFor(repoRoot, dir, x)
+	r.Runs, err = runsFor(fsys, dir, x)
 	if err != nil {
 		return nil, err
 	}
 
 	kRel := path.Join(dir, kustomizationFile)
-	kData, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(kRel)))
+	kData, err := fs.ReadFile(fsys, kRel)
 	switch {
-	case os.IsNotExist(err):
+	case errors.Is(err, fs.ErrNotExist):
 		return r, nil
 	case err != nil:
 		return nil, err
@@ -352,21 +385,17 @@ func Plan(repoRoot, kind, name, namespace, sourcePath string) (*Removal, error) 
 	return r, nil
 }
 
-func runsFor(repoRoot, dir string, claim XR) ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(dir)))
+func runsFor(fsys fs.FS, dir string, claim XR) ([]string, error) {
+	files, err := yamlFiles(fsys, dir)
 	if err != nil {
 		return nil, err
 	}
 	var runs []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
-			continue
-		}
-		file := path.Join(dir, e.Name())
+	for _, file := range files {
 		if file == claim.File {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(file)))
+		data, err := fs.ReadFile(fsys, file)
 		if err != nil {
 			return nil, err
 		}

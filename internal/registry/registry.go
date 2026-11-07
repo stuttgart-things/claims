@@ -18,12 +18,15 @@ func Load(path string) (*ClaimRegistry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading registry file: %w", err)
 	}
+	return Parse(data)
+}
 
+// Parse parses the content of a registry.yaml (e.g. read from GitHub).
+func Parse(data []byte) (*ClaimRegistry, error) {
 	var reg ClaimRegistry
 	if err := yaml.Unmarshal(data, &reg); err != nil {
 		return nil, fmt.Errorf("parsing registry file: %w", err)
 	}
-
 	return &reg, nil
 }
 
