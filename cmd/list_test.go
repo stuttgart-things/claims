@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/stuttgart-things/claims/internal/registry"
 )
@@ -323,5 +324,58 @@ func TestFilterKinds(t *testing.T) {
 				t.Errorf("got %q dropped %d, want %q dropped %d", names(got), dropped, tt.want, tt.wantDropped)
 			}
 		})
+	}
+}
+
+func TestWantRemoteList(t *testing.T) {
+	fleet, _ := xrFixtureRepo(t)
+	other := t.TempDir()
+	if err := os.Mkdir(filepath.Join(other, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		opts   listOptions
+		github string
+		want   bool
+	}{
+		{"in the fleet checkout", listOptions{Cwd: fleet}, "", false},
+		{"--github wins over a checkout", listOptions{Cwd: fleet}, "acme/fleet", true},
+		{"outside any checkout", listOptions{Cwd: t.TempDir()}, "", true},
+		{"in a checkout of another repository", listOptions{Cwd: other}, "", true},
+		{"--repo names a local place", listOptions{Cwd: other, Repo: fleet}, "", false},
+		{"--registry names a local file", listOptions{Cwd: other, Registry: "r.yaml"}, "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.opts.Getenv = func(string) string { return "" }
+			if got := wantRemoteList(resolveListLocation(tc.opts), tc.github); got != tc.want {
+				t.Errorf("wantRemoteList = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCollectClaimsRemote(t *testing.T) {
+	file := fxDir + "/sbx.yaml"
+	files := fstest.MapFS{
+		file:                          {Data: []byte(fxVM("NativeProxmoxVM", "sbx-vm", file))},
+		fxDir + "/kustomization.yaml": {Data: []byte("resources: []\n")},
+	}
+	loc := listLocation{Remote: &fleetSource{FS: files, Repo: "acme/fleet", Ref: "main"}, RegistryPath: defaultRegistryPath}
+
+	got, err := collectClaims(loc, listSourceAll)
+	if err != nil || len(got) != 1 || got[0].Name != "sbx-vm" || got[0].Path != file || got[0].Source != sourceXRs {
+		t.Fatalf("xrs only: %+v, %v", got, err)
+	}
+
+	files[defaultRegistryPath] = &fstest.MapFile{Data: []byte("claims:\n  - name: flux-infra\n    template: flux-gitrepository\n")}
+	got, err = collectClaims(loc, listSourceAll)
+	if err != nil || len(got) != 2 || got[0].Name != "flux-infra" {
+		t.Fatalf("registry + xrs: %+v, %v", got, err)
+	}
+
+	empty := listLocation{Remote: &fleetSource{FS: fstest.MapFS{}, Repo: "acme/empty", Ref: "main"}}
+	if _, err := collectClaims(empty, listSourceAll); err == nil || !strings.Contains(err.Error(), "github.com/acme/empty@main") {
+		t.Errorf("empty remote: %v", err)
 	}
 }

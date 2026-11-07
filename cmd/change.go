@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -33,8 +33,9 @@ import (
 //
 // A runID change rebuilds the AnsibleRun (crossplane-configurations#555):
 // deleting it does not re-run it (#554), so a retry is a change to the order
-// file like a resize. claims checks what it can see in the local checkout
-// (AnsibleRun enabled, the id new); the workflow checks it again on main.
+// file like a resize. claims checks what it can see (AnsibleRun enabled, the
+// id new) in the local checkout, or without one on GitHub at --ref
+// (claims#107); the workflow checks it again on main.
 
 const changeWorkflow = "dispatch-change-claim.yaml"
 
@@ -60,14 +61,17 @@ type ChangeConfig struct {
 	RunID string // new spec.ansible.runID (re-runs the AnsibleRun)
 	Retry bool   // count spec.ansible.runID up: unset -> 2, a number -> +1
 
-	// From the local checkout, when it has the file: the current runID, the
-	// one --retry leads to, and where the PipelineRun runs. Display only;
-	// the workflow decides on main.
+	// From the fleet repository, when claims can read the file: the current
+	// runID, the one --retry leads to, and where the PipelineRun runs.
+	// Display only; the workflow decides on main.
 	runIDSeen    bool
 	runIDCurrent string
 	runIDNext    string
 	pipelineNS   string
 	rebootSet    bool // --reboot given explicitly
+
+	fleet    *fleetSource // where the claim was read; nil until opened
+	fleetErr error        // why it could not be opened
 
 	Repo   string // owner/name of the fleet repository ("" = the checkout's)
 	Ref    string // branch the workflow runs on
@@ -148,7 +152,7 @@ func init() {
 	f.BoolVar(&changeFlags.Retry, "retry", false, "Re-run the AnsibleRun with the next runID (unset -> 2, a number -> +1)")
 	f.StringVar(&changeFlags.RequestedBy, "requested-by", "", "Who asks for the change (PR body; default: the git user)")
 	f.StringVar(&changeFlags.Reason, "reason", "", "Why the claim changes (PR body)")
-	f.StringVar(&changeFlags.Repo, "repo", "", "Fleet repository owner/name (default: the current checkout's GitHub repository)")
+	f.StringVar(&changeFlags.Repo, "repo", "", "Fleet repository owner/name (default: the current checkout's GitHub repository; outside one $"+envFleetRepo+" or "+defaultFleetRepo+", read from GitHub)")
 	f.StringVar(&changeFlags.Ref, "ref", "main", "Branch the workflow runs on")
 	f.BoolVar(&changeFlags.DryRun, "dry-run", false, "Print the workflow inputs without starting it")
 	f.BoolVar(&changeFlags.NoWait, "no-wait", false, "Start the workflow and return without waiting for the PR")
@@ -290,16 +294,13 @@ func resolveChange(cfg *ChangeConfig) error {
 		return errors.New("--reboot belongs to a resize; a re-run does not reboot the VM")
 	}
 	if cfg.SourcePath == "" || cfg.Kind == "" || cfg.Name == "" {
-		root, err := findRepoRoot(".")
+		src, err := cfg.openFleet()
 		if err != nil {
-			if cfg.SourcePath == "" {
-				return errors.New("--source-path, --kind and --name are needed outside a checkout of the fleet repository")
-			}
-			return errors.New("--kind and --name are needed outside a checkout of the fleet repository")
+			return fmt.Errorf("%w\n(or pass --kind, --name and --source-path: the workflow then checks the claim alone)", err)
 		}
 		x := &DeleteXRConfig{Kind: cfg.Kind, Name: cfg.Name, Namespace: cfg.Namespace, SourcePath: cfg.SourcePath}
-		if err := resolveXR(root, x); err != nil {
-			return err
+		if err := resolveXRFS(src.FS, x); err != nil {
+			return fmt.Errorf("%w (read from %s)", err, src)
 		}
 		cfg.Kind, cfg.Name, cfg.Namespace, cfg.SourcePath = x.Kind, x.Name, x.Namespace, x.SourcePath
 	}
@@ -311,7 +312,7 @@ func resolveChange(cfg *ChangeConfig) error {
 	}
 	if cfg.isRunID() {
 		cfg.Reboot, cfg.RebootAt = "", ""
-		return checkRunIDLocal(cfg)
+		return checkRunID(cfg)
 	}
 	switch cfg.Reboot {
 	case "", "evening":
@@ -330,15 +331,28 @@ func resolveChange(cfg *ChangeConfig) error {
 	return nil
 }
 
-// checkRunIDLocal reads the claim from the local checkout, when it has the
-// file: the AnsibleRun must be enabled and the id new; --retry's next id is
-// worked out for display. Without the file the workflow checks alone.
-func checkRunIDLocal(cfg *ChangeConfig) error {
-	root, err := findRepoRoot(".")
+// openFleet opens the fleet repository once: the local checkout, else GitHub
+// at --ref. A remote read names its repository in cfg.Repo, so the workflow
+// is started there too.
+func (cfg *ChangeConfig) openFleet() (*fleetSource, error) {
+	if cfg.fleet == nil && cfg.fleetErr == nil {
+		cfg.fleet, cfg.fleetErr = openFleet(cfg.Repo, cfg.Ref)
+		if cfg.fleet != nil && cfg.fleet.remote() && cfg.Repo == "" {
+			cfg.Repo = cfg.fleet.Repo
+		}
+	}
+	return cfg.fleet, cfg.fleetErr
+}
+
+// checkRunID reads the claim from the fleet repository, when claims can:
+// the AnsibleRun must be enabled and the id new; --retry's next id is worked
+// out for display. Without the file the workflow checks alone.
+func checkRunID(cfg *ChangeConfig) error {
+	src, err := cfg.openFleet()
 	if err != nil {
 		return nil
 	}
-	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(cfg.SourcePath)))
+	data, err := fs.ReadFile(src.FS, cfg.SourcePath)
 	if err != nil {
 		return nil
 	}
@@ -356,6 +370,9 @@ func checkRunIDLocal(cfg *ChangeConfig) error {
 	}
 	a := doc.Spec.Ansible
 	behind := " (in this checkout; git pull if it is behind main)"
+	if src.remote() {
+		behind = " (on " + src.String() + ")"
+	}
 	if !a.Enabled {
 		return fmt.Errorf("%s: spec.ansible.enabled is not true, so there is no AnsibleRun to re-run%s", cfg.SourcePath, behind)
 	}
@@ -459,9 +476,9 @@ func runIDLine(cfg *ChangeConfig) string {
 	}
 	if !cfg.runIDSeen {
 		if next == "" {
-			return "next (the workflow counts up; the file is not in this checkout)"
+			return "next (the workflow counts up; claims could not read the file)"
 		}
-		return next + " (the file is not in this checkout)"
+		return next + " (claims could not read the file)"
 	}
 	cur := cfg.runIDCurrent
 	if cur == "" {
@@ -562,11 +579,11 @@ func refusalLines(log string) string {
 // reboot window, or an Ansible re-run.
 func pickChangeInteractive(cfg *ChangeConfig) (bool, error) {
 	if cfg.Name == "" && cfg.SourcePath == "" {
-		root, err := findRepoRoot(".")
+		src, err := cfg.openFleet()
 		if err != nil {
-			return false, errors.New("run claims change interactively in a checkout of the fleet repository")
+			return false, err
 		}
-		all, err := xrdelete.Scan(root)
+		all, err := xrdelete.ScanFS(src.FS)
 		if err != nil {
 			return false, err
 		}
