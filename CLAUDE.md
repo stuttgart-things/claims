@@ -58,6 +58,8 @@ Commands auto-detect TTY to choose interactive vs non-interactive mode using `go
 - **`internal/gitops`** - Git operations via go-git: clone, branch, commit, push. PR creation shells out to `gh` CLI. Credential resolution: flags > `GIT_USER/GIT_TOKEN` > `GITHUB_USER/GITHUB_TOKEN`.
 - **`internal/params`** - Parameter file parsing (YAML/JSON). Supports single `template:` and multi `templates:` format. Inline params parsed as `key=value`.
 - **`internal/registry`** - CRUD for `claims/registry.yaml` (tracks rendered claims as entries with metadata).
+- **`internal/xrdelete`** - Finds, lists and plans the removal of XRs in `clusters/*/*/*-xrs/`. The `…FS` variants work on any `fs.FS`; the repoRoot variants wrap `os.DirFS`.
+- **`internal/ghfs`** - Read-only `fs.FS` over one ref of a GitHub repository (go-github: 1 tree call, blobs on demand plus `Prefetch`). `cmd/fleet.go` uses it when there is no local checkout of the fleet repository (claims#107). Token order: `GIT_TOKEN`, `GITHUB_TOKEN`, then `gh auth token`; tests stub `openRemoteFleet` and `ghAuthToken` in `TestMain` (`cmd/fleet_test.go`).
 - **`internal/kustomize`** - Read/write `kustomization.yaml`, idempotent resource add/remove.
 - **`internal/sops`** - SOPS encryption via age. Requires `sops` binary and `SOPS_AGE_RECIPIENTS` env var.
 
