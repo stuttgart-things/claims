@@ -1,107 +1,143 @@
 package cmd
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
-	"time"
+
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
+
+	"github.com/stuttgart-things/claims/internal/ghclient"
 )
 
-// fakeGH answers the gh calls claims change makes and records them.
-type fakeGH struct {
-	calls      [][]string
-	conclusion string
-	log        string
-}
-
-func (f *fakeGH) install(t *testing.T) {
-	t.Helper()
-	orig, origPoll := gh, changePoll
-	t.Cleanup(func() { gh, changePoll = orig, origPoll })
-	changePoll = time.Millisecond
-	gh = func(args ...string) ([]byte, error) {
-		f.calls = append(f.calls, args)
-		switch strings.Join(args[:2], " ") {
-		case "workflow run":
-			return nil, nil
-		case "run list":
-			b, _ := json.Marshal([]map[string]any{
-				{"databaseId": 1, "createdAt": time.Now().Add(-time.Hour), "status": "completed", "conclusion": "success"},
-				{"databaseId": 42, "createdAt": time.Now(), "status": "in_progress"},
-			})
-			return b, nil
-		case "run view":
-			if len(args) > 3 && args[3] == "--log-failed" {
-				return []byte(f.log), nil
-			}
-			return []byte(fmt.Sprintf(`{"status":"completed","conclusion":%q}`, f.conclusion)), nil
-		case "pr list":
-			return []byte(`[{"url":"https://github.com/o/r/pull/7"}]`), nil
-		}
-		return nil, fmt.Errorf("unexpected gh %v", args)
-	}
-}
-
-func (f *fakeGH) call(prefix string) []string {
-	for _, c := range f.calls {
-		if strings.HasPrefix(strings.Join(c, " "), prefix) {
-			return c
-		}
-	}
-	return nil
-}
-
 func TestChangeDispatchesWorkflow(t *testing.T) {
-	root, _ := xrFixtureRepo(t)
-	t.Chdir(root)
-	f := &fakeGH{conclusion: "success"}
-	f.install(t)
+	for _, runDetails := range []bool{true, false} {
+		t.Run(fmt.Sprintf("runDetails=%v", runDetails), func(t *testing.T) {
+			root, _ := xrFixtureRepo(t)
+			t.Chdir(root)
+			f := &fakeGitHubAPI{runDetails: runDetails, conclusion: "success"}
+			f.install(t)
 
-	cfg := &ChangeConfig{Name: "dev7-vm", Size: "xlarge", Reboot: "2026-11-05T20:00", RequestedBy: "jdoe", Reason: "more RAM", Repo: "o/r", Ref: "main"}
+			cfg := &ChangeConfig{Name: "dev7-vm", Size: "xlarge", Reboot: "2026-11-05T20:00", RequestedBy: "jdoe", Reason: "more RAM", Repo: "o/r", Ref: "main"}
+			if err := runChange(cfg, false); err != nil {
+				t.Fatal(err)
+			}
+			if c := f.called("POST /repos/o/r/actions/workflows/" + changeWorkflow + "/dispatches"); c == "" || f.dispatch != "main" {
+				t.Errorf("no dispatch in o/r on main: %v", f.calls)
+			}
+			want := map[string]any{
+				"kind": "NativeVsphereVM", "name": "dev7-vm", "namespace": "default",
+				"source_path": fxDir + "/dev7.yaml", "size": "xlarge",
+				"reboot": "at", "reboot_at": "2026-11-05T20:00", "requested_by": "jdoe", "reason": "more RAM",
+			}
+			if !reflect.DeepEqual(f.inputs, want) {
+				t.Errorf("inputs = %v\nwant %v", f.inputs, want)
+			}
+			if f.called("GET /repos/o/r/actions/runs/42") == "" {
+				t.Errorf("did not wait for the new run (42): %v", f.calls)
+			}
+			if listed := f.called("GET /repos/o/r/actions/workflows/") != ""; listed == runDetails {
+				t.Errorf("listed the runs = %v with runDetails = %v", listed, runDetails)
+			}
+			if p := f.called("GET /repos/o/r/pulls"); !strings.Contains(p, "head=o%3Achange-claim%2Fdev7-vm") || !strings.Contains(p, "state=open") {
+				t.Errorf("pr lookup = %q", p)
+			}
+		})
+	}
+}
+
+func TestChangeRequestedByFromAPI(t *testing.T) {
+	f := &fakeGitHubAPI{runDetails: true, conclusion: "success", login: "api-user"}
+	f.install(t)
+	cfg := &ChangeConfig{Kind: "NativeProxmoxVM", Name: "x-vm", SourcePath: fxDir + "/x.yaml", Size: "large", Reboot: "none", Repo: "o/r", Ref: "main"}
 	if err := runChange(cfg, false); err != nil {
 		t.Fatal(err)
 	}
-	run := strings.Join(f.call("workflow run"), " ")
-	for _, want := range []string{
-		"workflow run dispatch-change-claim.yaml --ref main -R o/r",
-		"-f kind=NativeVsphereVM", "-f name=dev7-vm", "-f namespace=default",
-		"-f source_path=" + fxDir + "/dev7.yaml", "-f size=xlarge",
-		"-f reboot=at", "-f reboot_at=2026-11-05T20:00", "-f requested_by=jdoe", "-f reason=more RAM",
-	} {
-		if !strings.Contains(run, want) {
-			t.Errorf("gh call lacks %q:\n%s", want, run)
-		}
-	}
-	if v := strings.Join(f.call("run view 42"), " "); v == "" {
-		t.Errorf("did not wait for the new run (42): %v", f.calls)
-	}
-	if p := strings.Join(f.call("pr list"), " "); !strings.Contains(p, "--head change-claim/dev7-vm") {
-		t.Errorf("pr lookup = %s", p)
+	if f.inputs["requested_by"] != "api-user" {
+		t.Errorf("requested_by = %v", f.inputs["requested_by"])
 	}
 }
 
 func TestChangeReportsRefusal(t *testing.T) {
-	f := &fakeGH{conclusion: "failure", log: "Create-Change-PR\tRewrite\t2026 ::error::size 'huge' is not one of ['large', 'medium', 'small', 'xlarge']\n"}
+	f := &fakeGitHubAPI{runDetails: true, conclusion: "failure", annotations: []string{
+		"size 'huge' is not one of ['large', 'medium', 'small', 'xlarge']", "Process completed with exit code 1.",
+	}}
 	f.install(t)
 	cfg := &ChangeConfig{Kind: "NativeVsphereVM", Name: "dev7-vm", SourcePath: fxDir + "/dev7.yaml", Size: "huge", Ref: "main"}
 	err := runChange(cfg, false)
-	if err == nil || !strings.Contains(err.Error(), "failure") || !strings.Contains(err.Error(), "size 'huge' is not one of") {
+	if err == nil || !strings.Contains(err.Error(), "failure") || !strings.Contains(err.Error(), "size 'huge' is not one of") ||
+		strings.Contains(err.Error(), "Process completed") || strings.Contains(err.Error(), "ubuntu-latest") {
 		t.Errorf("err = %v", err)
+	}
+	if cfg.Repo != defaultFleetRepo {
+		t.Errorf("Repo = %q: outside a fleet checkout the workflow runs in %s", cfg.Repo, defaultFleetRepo)
+	}
+}
+
+func TestChangeAPIErrors(t *testing.T) {
+	f := &fakeGitHubAPI{}
+	f.install(t)
+	t.Setenv("GITHUB_TOKEN", "wrong")
+	cfg := &ChangeConfig{Kind: "NativeVsphereVM", Name: "dev7-vm", SourcePath: fxDir + "/dev7.yaml", Size: "large", Repo: "o/r", Ref: "main", RequestedBy: "jdoe"}
+	err := runChange(cfg, false)
+	if err == nil || !strings.Contains(err.Error(), "token was refused") || !strings.Contains(err.Error(), "o/r") {
+		t.Errorf("err = %v", err)
+	}
+
+	t.Setenv("GITHUB_TOKEN", "")
+	err = runChange(&ChangeConfig{Kind: "NativeVsphereVM", Name: "dev7-vm", SourcePath: fxDir + "/dev7.yaml", Size: "large", Repo: "o/r", Ref: "main"}, false)
+	if !errors.Is(err, ghclient.ErrNoToken) {
+		t.Errorf("err = %v, want ErrNoToken", err)
+	}
+}
+
+func TestRefusalLines(t *testing.T) {
+	if got := refusalLines([]string{"Process completed with exit code 1."}, "https://x/run"); !strings.Contains(got, "https://x/run") {
+		t.Errorf("no refusal: %q", got)
+	}
+	if got := refusalLines([]string{" a ", "b"}, ""); got != "  a\n  b" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestChangeRepoFromCheckout(t *testing.T) {
+	root, _ := xrFixtureRepo(t)
+	t.Chdir(root)
+	// The fixture's origin is a local path: no GitHub repository to start the workflow in.
+	cfg := &ChangeConfig{Name: "dev7-vm", Size: "large", Ref: "main", DryRun: true}
+	if err := runChange(cfg, false); err == nil || !strings.Contains(err.Error(), "--repo") {
+		t.Errorf("err = %v, want a hint to pass --repo", err)
+	}
+	g, err := git.PlainOpen(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.DeleteRemote("origin"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: []string{"git@github.com:acme/fleet.git"}}); err != nil {
+		t.Fatal(err)
+	}
+	cfg = &ChangeConfig{Name: "dev7-vm", Size: "large", Ref: "main", DryRun: true}
+	if err := runChange(cfg, false); err != nil || cfg.Repo != "acme/fleet" {
+		t.Errorf("Repo = %q, %v", cfg.Repo, err)
 	}
 }
 
 func TestChangeDryRunStartsNothing(t *testing.T) {
-	f := &fakeGH{}
+	f := &fakeGitHubAPI{}
 	f.install(t)
 	cfg := &ChangeConfig{Kind: "NativeProxmoxVM", Name: "x-vm", SourcePath: fxDir + "/x.yaml", Size: "large", Reboot: "none", DryRun: true, Ref: "main"}
 	if err := runChange(cfg, false); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.calls) != 0 {
-		t.Errorf("dry run called gh: %v", f.calls)
+		t.Errorf("dry run called GitHub: %v", f.calls)
 	}
 }
 
@@ -243,24 +279,24 @@ func TestChangeRunIDInputs(t *testing.T) {
 	root, _ := xrFixtureRepo(t)
 	t.Chdir(root)
 	fxAnsibleVM(t, root, "a1-vm", "")
-	f := &fakeGH{conclusion: "success"}
+	f := &fakeGitHubAPI{runDetails: true, conclusion: "success"}
 	f.install(t)
 
 	for _, tc := range []struct {
-		cfg  ChangeConfig
-		want string
+		cfg       ChangeConfig
+		key, want string
 	}{
-		{ChangeConfig{Name: "a1-vm", Retry: true, Reboot: "evening", Reason: "collection fixed", Ref: "main"}, "-f retry=true"},
-		{ChangeConfig{Name: "a1-vm", RunID: "fix-1", Reboot: "evening", Ref: "main"}, "-f run_id=fix-1"},
+		{ChangeConfig{Name: "a1-vm", Retry: true, Reboot: "evening", Reason: "collection fixed", Repo: "o/r", Ref: "main", RequestedBy: "jdoe"}, "retry", "true"},
+		{ChangeConfig{Name: "a1-vm", RunID: "fix-1", Reboot: "evening", Repo: "o/r", Ref: "main", RequestedBy: "jdoe"}, "run_id", "fix-1"},
 	} {
-		f.calls = nil
 		cfg := tc.cfg
 		if err := runChange(&cfg, false); err != nil {
 			t.Fatal(err)
 		}
-		run := strings.Join(f.call("workflow run"), " ")
-		if !strings.Contains(run, tc.want) || strings.Contains(run, "size=") || strings.Contains(run, "reboot") {
-			t.Errorf("gh call = %s, want %q and no size/reboot", run, tc.want)
+		_, size := f.inputs["size"]
+		_, reboot := f.inputs["reboot"]
+		if f.inputs[tc.key] != tc.want || size || reboot {
+			t.Errorf("inputs = %v, want %s=%s and no size/reboot", f.inputs, tc.key, tc.want)
 		}
 	}
 }
