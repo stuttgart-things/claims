@@ -1,3 +1,10 @@
+# [0.23.0](https://github.com/stuttgart-things/claims/compare/v0.22.0...v0.23.0) (2026-11-07)
+
+
+### Features
+
+* **fleet:** read the fleet repository from GitHub without a checkout (change, list) ([#109](https://github.com/stuttgart-things/claims/issues/109)) ([8277f96](https://github.com/stuttgart-things/claims/commit/8277f96984c96a21c4480e39caa926049327d03c)), closes [#107](https://github.com/stuttgart-things/claims/issues/107) [#108](https://github.com/stuttgart-things/claims/issues/108)
+
 # [0.22.0](https://github.com/stuttgart-things/claims/compare/v0.21.0...v0.22.0) (2026-11-06)
 
 
