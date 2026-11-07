@@ -421,7 +421,7 @@ Start from an up-to-date `main`: the branch is created from the current HEAD.
 ### list
 
 ```bash
-claims list [--source all|registry|xrs] [--kind K,...] [--repo DIR] [--registry FILE] [--template T] [--category C] [-o table|json]
+claims list [--source all|registry|xrs] [--kind K,...] [--repo DIR] [--registry FILE] [--github OWNER/NAME] [--template T] [--category C] [-o table|json]
 ```
 
 Lists the claims of the fleet repository from two places: `claims/registry.yaml`
@@ -433,6 +433,12 @@ the current directory, or `--repo` / `$CLAIMS_REPO`; the registry is
 `--kind` keeps only XRs of the given kinds (comma-separated or repeated,
 case-insensitive), e.g. `--kind NativeVsphereVM,NativeProxmoxVM` for the VMs;
 registry entries have no kind and are left out (noted on stderr).
+
+Without a checkout of the fleet repository, and without `--repo` / `--registry`,
+claims list reads both from GitHub at `main`: `--github`, else
+`$CLAIMS_GITHUB_REPO`, else `stuttgart-things/stuttgart-things`. A git checkout
+without `*-xrs` directories, such as claims itself, does not count as the fleet
+repository. See [Without a checkout](#without-a-checkout-of-the-fleet-repository).
 
 ### delete: XRs in `*-xrs` directories
 
@@ -485,8 +491,6 @@ Without `--create-pr` the files are only removed locally. `--git-branch` may onl
 claims resolves the claim, starts the workflow with the same inputs, waits for it and prints the PR `change-claim/<name>`, which `pr-claim-change.yaml` checks. Merging the PR applies the size.
 
 ```bash
-cd ~/projects/stuttgart-things     # resolves --name to kind and source-path
-
 claims change --name dev7-vm --size xlarge --dry-run
 claims change --name dev7-vm --size xlarge --reboot evening --reason "builds run out of memory"
 claims change --source-path clusters/labda/vsphere/machinery-orders-xrs/dev7.yaml --size xlarge --reboot 2026-11-05T20:00
@@ -507,21 +511,39 @@ claims change dev7-vm --run-id fix-docker                     # a chosen id
 
 - The claim's `spec.ansible.enabled` must be `true`, and the id must be new and match `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`.
 - `--retry` on a non-numeric runID is refused: pass the next one with `--run-id`.
-- In a checkout claims checks this up front and shows `current -> new`; the workflow checks again against `main`.
+- claims checks this up front and shows `current -> new`, from the checkout or, without one, from GitHub at `--ref`. The workflow checks again against `main`.
 - One change per PR: `--size` and `--run-id`/`--retry` exclude each other, and `--reboot` only goes with `--size`.
 - Needs vspherevm >= v0.14.0 / proxmoxvm >= v0.20.0 on the management cluster (crossplane-configurations#555). An older XRD rejects the field, and Flux reports the apply as failed.
 
 | Flag | Description |
 |------|-------------|
-| `--kind`, `--name`, `--namespace`, `--source-path` | The VM claim (or the argument: a name, or a path ending in `.yaml`). Outside a checkout, give `--kind`, `--name` and `--source-path` |
+| `--kind`, `--name`, `--namespace`, `--source-path` | The VM claim (or the argument: a name, or a path ending in `.yaml`). The name is looked up in the checkout, or on GitHub without one |
 | `--size` | New size: `small`, `medium`, `large` or `xlarge` (checked by the workflow) |
 | `--run-id`, `--retry` | Re-run the AnsibleRun with this `spec.ansible.runID`, or the next one (instead of `--size`) |
 | `--reboot` | When the one-shot run applies the resize in the guest: `evening` (19-22 Europe/Berlin, default), `now`, `none`, or an ISO-8601 time |
 | `--reason`, `--requested-by` | Shown in the PR body. `--requested-by` defaults to the git user, then the gh user |
-| `--repo`, `--ref` | Fleet repository (default: the checkout's) and the branch the workflow runs on (default `main`) |
+| `--repo`, `--ref` | Fleet repository (default: the checkout's; without one `$CLAIMS_GITHUB_REPO` or `stuttgart-things/stuttgart-things`) and the branch the workflow runs on and the claim is read at (default `main`) |
 | `--dry-run`, `--no-wait` | Show the inputs only; or start the workflow and return without waiting |
 
 When the workflow refuses the change, for example with an unknown size, a size the VM already has, or a kind it does not resize, claims prints the workflow's `::error::` lines. Needs `gh`, logged in with permission to run workflows.
+
+### Without a checkout of the fleet repository
+
+`claims change` and `claims list` work from any directory (claims#107). When
+the current directory is not in a checkout with `*-xrs` directories, they read
+the fleet repository straight from GitHub: one call for the tree, then the
+`*-xrs` files in parallel. No clone needed.
+
+```bash
+cd /tmp
+claims list --kind NativeProxmoxVM
+claims change sbx-labul-vm --retry --dry-run   # runID read from main
+```
+
+- Repository: `--repo` (change) / `--github` (list), else `$CLAIMS_GITHUB_REPO`, else `stuttgart-things/stuttgart-things`.
+- Token: `$GIT_TOKEN`, else `$GITHUB_TOKEN`, else the `gh` CLI's login (`gh auth token`). The repository is private, so there is no anonymous fallback.
+- A checkout still wins when there is one. It may be behind `main` or on another branch; then `git pull` first, or run claims outside it.
+- `claims delete` still needs a checkout: it writes and commits the removal itself.
 
 ### encrypt
 
