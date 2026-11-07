@@ -225,7 +225,7 @@ func pushXRDeletion(g *gitops.GitOps, repoRoot string, r *xrdelete.Removal, conv
 	if config.PRConfig == nil || !config.PRConfig.Create {
 		return nil
 	}
-	if err := gitops.CheckGHAuth(); err != nil {
+	if err := gitops.CheckGitHubAuth(config.GitConfig.token()); err != nil {
 		return err
 	}
 	pr := gitops.PRConfig{
@@ -234,6 +234,7 @@ func pushXRDeletion(g *gitops.GitOps, repoRoot string, r *xrdelete.Removal, conv
 		Labels:      append([]string{conv.Label}, config.PRConfig.Labels...),
 		BaseBranch:  config.PRConfig.BaseBranch,
 		HeadBranch:  conv.Branch,
+		Token:       config.GitConfig.token(),
 	}
 	if config.PRConfig.Description != "" {
 		pr.Description = config.PRConfig.Description + "\n\n" + conv.Body

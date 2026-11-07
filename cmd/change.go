@@ -1,22 +1,23 @@
 package cmd
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/huh"
+	"github.com/google/go-github/v93/github"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/stuttgart-things/claims/internal/ghclient"
 	"github.com/stuttgart-things/claims/internal/gitops"
 	"github.com/stuttgart-things/claims/internal/xrdelete"
 )
@@ -111,7 +112,9 @@ proxmoxvm >= v0.20.0 on the management cluster.
 The claim is --name, --source-path or the argument (a name, or a path ending
 in .yaml).
 
-Needs the gh CLI, logged in with permission to run workflows.`,
+Talks to the GitHub API (no gh CLI needed): the token is $GIT_TOKEN,
+$GITHUB_TOKEN, else the gh CLI's login; it needs permission to run
+workflows (actions: write) and to read the repository.`,
 	Example: `  claims change --kind NativeVsphereVM --name dev7-vm --size xlarge --reboot evening
   claims change --source-path clusters/labda/vsphere/machinery-orders-xrs/dev7.yaml --size xlarge --reboot 2026-11-05T20:00
   claims change --name dev7-vm --size xlarge --dry-run
@@ -128,11 +131,6 @@ Needs the gh CLI, logged in with permission to run workflows.`,
 		}
 		if cfg.RequestedBy == "" {
 			cfg.RequestedBy, _ = gitops.ResolveCredentialsOptional("", "")
-		}
-		if cfg.RequestedBy == "" && !cfg.DryRun {
-			if out, err := gh("api", "user", "--jq", ".login"); err == nil {
-				cfg.RequestedBy = strings.TrimSpace(string(out))
-			}
 		}
 		interactive := changeInteractive ||
 			(cfg.Name == "" && cfg.SourcePath == "" && (isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())))
@@ -179,20 +177,48 @@ func claimArg(cfg *ChangeConfig, arg string) error {
 // isRunID reports whether the change is a runID change (an Ansible re-run).
 func (c *ChangeConfig) isRunID() bool { return c.RunID != "" || c.Retry }
 
-// gh runs the GitHub CLI; tests replace it.
-var gh = func(args ...string) ([]byte, error) {
-	if _, err := exec.LookPath("gh"); err != nil {
-		return nil, errors.New("gh CLI not found: install from https://cli.github.com")
-	}
-	out, err := exec.Command("gh", args...).Output()
-	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && len(ee.Stderr) > 0 {
-			return out, fmt.Errorf("gh %s: %s", args[0]+" "+args[1], strings.TrimSpace(string(ee.Stderr)))
+// changeGitHub is the API client and the fleet repository the workflow runs in.
+type changeGitHub struct {
+	c           *github.Client
+	owner, repo string
+}
+
+func (g *changeGitHub) String() string { return g.owner + "/" + g.repo }
+
+// resolveChangeRepo fills cfg.Repo: --repo, the repository claims read the
+// claim from, the checkout's origin, else $CLAIMS_GITHUB_REPO or the default.
+func resolveChangeRepo(cfg *ChangeConfig) error {
+	if cfg.Repo == "" {
+		if src, ok := localFleet("."); ok {
+			g, err := gitops.New(src.Root, "", "")
+			if err != nil {
+				return err
+			}
+			url, err := g.GetRemoteURL("origin")
+			if err != nil {
+				return fmt.Errorf("the checkout %s has no origin remote to start the workflow in: pass --repo", src.Root)
+			}
+			if cfg.Repo, err = ghclient.RepoFromURL(url); err != nil {
+				return fmt.Errorf("%w: pass --repo", err)
+			}
+		} else {
+			cfg.Repo = fleetRepoName("")
 		}
-		return out, fmt.Errorf("gh %s: %w", args[0]+" "+args[1], err)
 	}
-	return out, nil
+	_, _, err := ghclient.SplitRepo(cfg.Repo)
+	return err
+}
+
+func newChangeGitHub(cfg *ChangeConfig) (*changeGitHub, error) {
+	owner, repo, err := ghclient.SplitRepo(cfg.Repo)
+	if err != nil {
+		return nil, err
+	}
+	c, err := ghclient.FromEnv("")
+	if err != nil {
+		return nil, err
+	}
+	return &changeGitHub{c: c, owner: owner, repo: repo}, nil
 }
 
 // changePoll is how often the workflow run and the PR are looked up.
@@ -208,6 +234,9 @@ func runChange(cfg *ChangeConfig, interactive bool) error {
 	if err := resolveChange(cfg); err != nil {
 		return err
 	}
+	if err := resolveChangeRepo(cfg); err != nil {
+		return err
+	}
 	inputs := changeInputs(cfg)
 	printChange(cfg, inputs)
 	if cfg.DryRun {
@@ -215,37 +244,52 @@ func runChange(cfg *ChangeConfig, interactive bool) error {
 		return nil
 	}
 
-	started := time.Now().Add(-5 * time.Second)
-	args := append([]string{"workflow", "run", changeWorkflow, "--ref", cfg.Ref}, repoArgs(cfg)...)
-	for _, kv := range inputs {
-		args = append(args, "-f", kv[0]+"="+kv[1])
-	}
-	if _, err := gh(args...); err != nil {
+	api, err := newChangeGitHub(cfg)
+	if err != nil {
 		return err
+	}
+	ctx := context.Background()
+	if cfg.RequestedBy == "" {
+		if u, _, err := api.c.Users.Get(ctx, ""); err == nil {
+			cfg.RequestedBy = u.GetLogin()
+			inputs = changeInputs(cfg)
+		}
+	}
+
+	started := time.Now().Add(-5 * time.Second)
+	body := map[string]any{}
+	for _, kv := range inputs {
+		body[kv[0]] = kv[1]
+	}
+	details, _, err := api.c.Actions.CreateWorkflowDispatchEventByFileName(ctx, api.owner, api.repo, changeWorkflow,
+		github.CreateWorkflowDispatchEventRequest{Ref: cfg.Ref, Inputs: body, ReturnRunDetails: new(true)})
+	if err != nil {
+		return ghclient.Describe(err, fmt.Sprintf("starting %s on %s in %s", changeWorkflow, cfg.Ref, api))
 	}
 	fmt.Printf("Started %s on %s.\n", changeWorkflow, cfg.Ref)
 	if cfg.NoWait {
+		if u := details.GetHTMLURL(); u != "" {
+			fmt.Println("Run: " + u)
+		}
 		fmt.Printf("The PR will be change-claim/%s.\n", cfg.Name)
 		return nil
 	}
 
-	runID, err := findDispatchedRun(cfg, started)
-	if err != nil {
-		return err
+	runID := details.GetWorkflowRunID()
+	if runID == 0 { // an API without return_run_details: look the run up
+		if runID, err = findDispatchedRun(ctx, api, started); err != nil {
+			return err
+		}
 	}
 	fmt.Printf("Waiting for run %d ...\n", runID)
-	conclusion, err := waitRun(cfg, runID)
+	run, err := waitRun(ctx, api, runID)
 	if err != nil {
 		return err
 	}
-	if conclusion != "success" {
-		hint := ""
-		if out, err := gh(append([]string{"run", "view", fmt.Sprint(runID), "--log-failed"}, repoArgs(cfg)...)...); err == nil {
-			hint = "\n" + refusalLines(string(out))
-		}
-		return fmt.Errorf("%s run %d: %s%s", changeWorkflow, runID, conclusion, hint)
+	if c := run.GetConclusion(); c != "success" {
+		return fmt.Errorf("%s run %d: %s\n%s", changeWorkflow, runID, c, failedRunLines(ctx, api, run))
 	}
-	url, err := changePR(cfg)
+	url, err := changePR(ctx, api, cfg)
 	if err != nil {
 		return err
 	}
@@ -443,19 +487,8 @@ func changeInputs(cfg *ChangeConfig) [][2]string {
 	return in
 }
 
-func repoArgs(cfg *ChangeConfig) []string {
-	if cfg.Repo == "" {
-		return nil
-	}
-	return []string{"-R", cfg.Repo}
-}
-
 func printChange(cfg *ChangeConfig, inputs [][2]string) {
-	repo := cfg.Repo
-	if repo == "" {
-		repo = "(current checkout)"
-	}
-	fmt.Printf("Workflow: %s on %s, repository %s\n", changeWorkflow, cfg.Ref, repo)
+	fmt.Printf("Workflow: %s on %s, repository %s\n", changeWorkflow, cfg.Ref, cfg.Repo)
 	for _, kv := range inputs {
 		fmt.Printf("  %-13s %s\n", kv[0]+":", kv[1])
 	}
@@ -487,90 +520,96 @@ func runIDLine(cfg *ChangeConfig) string {
 	return fmt.Sprintf("%s -> %s, PipelineRun %s-ansible-%s", cur, next, cfg.Name, next)
 }
 
-type ghRun struct {
-	ID         int64     `json:"databaseId"`
-	CreatedAt  time.Time `json:"createdAt"`
-	Status     string    `json:"status"`
-	Conclusion string    `json:"conclusion"`
-}
-
 // findDispatchedRun returns the first workflow_dispatch run of the workflow
-// created after `after` (gh workflow run does not print the run).
-func findDispatchedRun(cfg *ChangeConfig, after time.Time) (int64, error) {
+// created after `after`.
+func findDispatchedRun(ctx context.Context, api *changeGitHub, after time.Time) (int64, error) {
 	for i := 0; i < 30; i++ {
-		out, err := gh(append([]string{"run", "list", "--workflow", changeWorkflow, "--event", "workflow_dispatch",
-			"--limit", "10", "--json", "databaseId,createdAt,status,conclusion"}, repoArgs(cfg)...)...)
+		runs, _, err := api.c.Actions.ListWorkflowRunsByFileName(ctx, api.owner, api.repo, changeWorkflow,
+			&github.ListWorkflowRunsOptions{Event: "workflow_dispatch", ListOptions: github.ListOptions{PerPage: 10}})
 		if err != nil {
-			return 0, err
+			return 0, ghclient.Describe(err, "listing the "+changeWorkflow+" runs in "+api.String())
 		}
-		var runs []ghRun
-		if err := json.Unmarshal(out, &runs); err != nil {
-			return 0, fmt.Errorf("parsing gh run list: %w", err)
-		}
-		var best *ghRun
-		for i := range runs {
-			r := &runs[i]
-			if r.CreatedAt.After(after) && (best == nil || r.CreatedAt.Before(best.CreatedAt)) {
+		var best *github.WorkflowRun
+		for _, r := range runs.WorkflowRuns {
+			if r.GetCreatedAt().After(after) && (best == nil || r.GetCreatedAt().Before(best.GetCreatedAt().Time)) {
 				best = r
 			}
 		}
 		if best != nil {
-			return best.ID, nil
+			return best.GetID(), nil
 		}
 		time.Sleep(changePoll)
 	}
 	return 0, fmt.Errorf("the %s run did not show up; look at the repository's Actions tab", changeWorkflow)
 }
 
-func waitRun(cfg *ChangeConfig, id int64) (string, error) {
+func waitRun(ctx context.Context, api *changeGitHub, id int64) (*github.WorkflowRun, error) {
 	for i := 0; i < 180; i++ {
-		out, err := gh(append([]string{"run", "view", fmt.Sprint(id), "--json", "status,conclusion"}, repoArgs(cfg)...)...)
+		r, _, err := api.c.Actions.GetWorkflowRunByID(ctx, api.owner, api.repo, id)
 		if err != nil {
-			return "", err
+			return nil, ghclient.Describe(err, fmt.Sprintf("reading run %d in %s", id, api))
 		}
-		var r ghRun
-		if err := json.Unmarshal(out, &r); err != nil {
-			return "", fmt.Errorf("parsing gh run view: %w", err)
-		}
-		if r.Status == "completed" {
-			return r.Conclusion, nil
+		if r.GetStatus() == "completed" {
+			return r, nil
 		}
 		time.Sleep(changePoll)
 	}
-	return "", fmt.Errorf("run %d did not finish in time", id)
+	return nil, fmt.Errorf("run %d did not finish in time", id)
 }
 
-func changePR(cfg *ChangeConfig) (string, error) {
+func changePR(ctx context.Context, api *changeGitHub, cfg *ChangeConfig) (string, error) {
 	for i := 0; i < 6; i++ {
-		out, err := gh(append([]string{"pr", "list", "--head", "change-claim/" + cfg.Name, "--state", "open",
-			"--json", "url"}, repoArgs(cfg)...)...)
+		prs, _, err := api.c.PullRequests.List(ctx, api.owner, api.repo, &github.PullRequestListOptions{
+			Head: api.owner + ":change-claim/" + cfg.Name, State: "open"})
 		if err != nil {
-			return "", err
-		}
-		var prs []struct {
-			URL string `json:"url"`
-		}
-		if err := json.Unmarshal(out, &prs); err != nil {
-			return "", fmt.Errorf("parsing gh pr list: %w", err)
+			return "", ghclient.Describe(err, "looking up the PR change-claim/"+cfg.Name+" in "+api.String())
 		}
 		if len(prs) > 0 {
-			return prs[0].URL, nil
+			return prs[0].GetHTMLURL(), nil
 		}
 		time.Sleep(changePoll)
 	}
 	return "", fmt.Errorf("the run succeeded but no open PR change-claim/%s was found", cfg.Name)
 }
 
-// refusalLines picks claim-change.py's ::error:: lines out of a failed log.
-func refusalLines(log string) string {
+// failedRunLines are claim-change.py's refusals: its ::error:: lines, which
+// GitHub keeps as annotations of the failed jobs.
+func failedRunLines(ctx context.Context, api *changeGitHub, run *github.WorkflowRun) string {
+	var msgs []string
+	jobs, _, err := api.c.Actions.ListWorkflowJobs(ctx, api.owner, api.repo, run.GetID(), &github.ListWorkflowJobsOptions{Filter: "latest"})
+	if err == nil {
+		for _, j := range jobs.Jobs {
+			if j.GetConclusion() != "failure" {
+				continue
+			}
+			anns, _, err := api.c.Checks.ListCheckRunAnnotations(ctx, api.owner, api.repo, j.GetID(), nil)
+			if err != nil {
+				continue
+			}
+			for _, a := range anns {
+				if a.GetAnnotationLevel() == "failure" { // not the runner's notices and warnings
+					msgs = append(msgs, a.GetMessage())
+				}
+			}
+		}
+	}
+	return refusalLines(msgs, run.GetHTMLURL())
+}
+
+// refusalLines keeps the messages that explain the failure: the runner's own
+// "Process completed with exit code" note says nothing.
+func refusalLines(msgs []string, runURL string) string {
 	var out []string
-	for _, l := range strings.Split(log, "\n") {
-		if i := strings.Index(l, "::error::"); i >= 0 {
-			out = append(out, "  "+strings.TrimSpace(l[i+len("::error::"):]))
+	for _, m := range msgs {
+		if m = strings.TrimSpace(m); m != "" && !strings.HasPrefix(m, "Process completed with exit code") {
+			out = append(out, "  "+m)
 		}
 	}
 	if len(out) == 0 {
-		return "  (see the run's log)"
+		if runURL == "" {
+			return "  (see the run's log)"
+		}
+		return "  (see the run's log: " + runURL + ")"
 	}
 	return strings.Join(out, "\n")
 }

@@ -320,7 +320,7 @@ func runSourcePathLayout(orders []layoutOrder, config *RenderConfig) error {
 	if config.PRConfig == nil || !config.PRConfig.Create {
 		return nil
 	}
-	if err := gitops.CheckGHAuth(); err != nil {
+	if err := gitops.CheckGitHubAuth(config.GitConfig.token()); err != nil {
 		return err
 	}
 	pr := gitops.PRConfig{
@@ -329,6 +329,7 @@ func runSourcePathLayout(orders []layoutOrder, config *RenderConfig) error {
 		Labels:      config.PRConfig.Labels,
 		BaseBranch:  config.PRConfig.BaseBranch,
 		HeadBranch:  config.GitConfig.Branch,
+		Token:       config.GitConfig.token(),
 	}
 	if pr.Title == "" {
 		pr.Title = conv.Title

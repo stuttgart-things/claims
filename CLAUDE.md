@@ -47,7 +47,7 @@ Each command (render, delete, encrypt) follows a consistent multi-file split:
 | `<cmd>_output.go` | File writing, dry-run display |
 | `<cmd>_review.go` | YAML preview and action selection |
 | `<cmd>_git.go` | Git operations (clone/branch/commit/push) |
-| `<cmd>_pr.go` | PR creation via `gh` CLI |
+| `<cmd>_pr.go` | PR creation via the GitHub API (`gitops.CreatePR`) |
 
 Commands auto-detect TTY to choose interactive vs non-interactive mode using `go-isatty`.
 
@@ -55,11 +55,12 @@ Commands auto-detect TTY to choose interactive vs non-interactive mode using `go
 
 - **`internal/templates`** - HTTP client for claim-machinery-api (`GET /api/v1/claim-templates`, `POST .../order`). Uses `NewClientWithHTTPClient()` for test injection.
 - **`internal/apiauth`** - Optional bearer-token auth for claim-machinery-api (off by default): `CLAIM_API_TOKEN`/`--api-token`, or OAuth2 client credentials `CLAIM_API_OIDC_*`/`--api-oidc-*` (token cached until expiry). Wired in via `newAPIClient()` in `cmd/apiauth.go` -> `templates.NewClientWithAuth()`; 401/403 errors carry `apiauth.StatusHint`.
-- **`internal/gitops`** - Git operations via go-git: clone, branch, commit, push. PR creation shells out to `gh` CLI. Credential resolution: flags > `GIT_USER/GIT_TOKEN` > `GITHUB_USER/GITHUB_TOKEN`.
+- **`internal/gitops`** - Git operations via go-git: clone, branch, commit, push. PR creation uses the GitHub API (go-github, `internal/ghclient`) in the repository of the checkout's `origin`. Credential resolution: flags > `GIT_USER/GIT_TOKEN` > `GITHUB_USER/GITHUB_TOKEN`.
 - **`internal/params`** - Parameter file parsing (YAML/JSON). Supports single `template:` and multi `templates:` format. Inline params parsed as `key=value`.
 - **`internal/registry`** - CRUD for `claims/registry.yaml` (tracks rendered claims as entries with metadata).
 - **`internal/xrdelete`** - Finds, lists and plans the removal of XRs in `clusters/*/*/*-xrs/`. The `…FS` variants work on any `fs.FS`; the repoRoot variants wrap `os.DirFS`.
-- **`internal/ghfs`** - Read-only `fs.FS` over one ref of a GitHub repository (go-github: 1 tree call, blobs on demand plus `Prefetch`). `cmd/fleet.go` uses it when there is no local checkout of the fleet repository (claims#107). Token order: `GIT_TOKEN`, `GITHUB_TOKEN`, then `gh auth token`; tests stub `openRemoteFleet` and `ghAuthToken` in `TestMain` (`cmd/fleet_test.go`).
+- **`internal/ghfs`** - Read-only `fs.FS` over one ref of a GitHub repository (go-github: 1 tree call, blobs on demand plus `Prefetch`). `cmd/fleet.go` uses it when there is no local checkout of the fleet repository (claims#107). Tests stub `openRemoteFleet` in `TestMain` (`cmd/fleet_test.go`).
+- **`internal/ghclient`** - The go-github client for every GitHub call (claims#108; the `gh` CLI is optional): `Token(flag)` = flag, `GIT_TOKEN`, `GITHUB_TOKEN`, then `gh auth token` (`GHAuthToken`, a var); `New` honours `GITHUB_API_URL`; `Describe` turns 401/403/404/422 into hints. Tests point `GITHUB_API_URL` at an `httptest` server (`cmd/github_fake_test.go`); `TestMain` points it at a dead address and stubs `GHAuthToken`.
 - **`internal/kustomize`** - Read/write `kustomization.yaml`, idempotent resource add/remove.
 - **`internal/sops`** - SOPS encryption via age. Requires `sops` binary and `SOPS_AGE_RECIPIENTS` env var.
 

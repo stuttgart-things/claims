@@ -120,7 +120,7 @@ func executeDeleteGitOperations(result *DeleteResult, config *DeleteConfig, repo
 
 // executeDeletePRCreation creates a PR for the delete operation
 func executeDeletePRCreation(result *DeleteResult, config *DeleteConfig, repoPath, headBranch string) error {
-	if err := gitops.CheckGHAuth(); err != nil {
+	if err := gitops.CheckGitHubAuth(config.GitConfig.token()); err != nil {
 		return err
 	}
 
@@ -145,6 +145,7 @@ func executeDeletePRCreation(result *DeleteResult, config *DeleteConfig, repoPat
 		Labels:      config.PRConfig.Labels,
 		BaseBranch:  baseBranch,
 		HeadBranch:  headBranch,
+		Token:       config.GitConfig.token(),
 	}
 
 	fmt.Println("Creating pull request...")

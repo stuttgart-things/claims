@@ -13,8 +13,8 @@ func executePRCreation(results []RenderResult, config *RenderConfig, repoPath st
 		return nil
 	}
 
-	// Check gh authentication
-	if err := gitops.CheckGHAuth(); err != nil {
+	// A token to open the PR with (claims#108: GitHub API, no gh needed)
+	if err := gitops.CheckGitHubAuth(config.GitConfig.token()); err != nil {
 		return err
 	}
 
@@ -54,6 +54,7 @@ func executePRCreation(results []RenderResult, config *RenderConfig, repoPath st
 		Labels:      config.PRConfig.Labels,
 		BaseBranch:  baseBranch,
 		HeadBranch:  headBranch,
+		Token:       config.GitConfig.token(),
 	}
 
 	fmt.Println("Creating pull request...")
