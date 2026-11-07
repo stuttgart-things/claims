@@ -58,7 +58,7 @@ cmd/
 ├── render_types.go          # Shared types (RenderConfig, RenderResult)
 ├── render_output.go         # File output & organization logic
 ├── render_git.go            # Git operations wrapper
-├── render_pr.go             # Pull request creation (gh CLI wrapper)
+├── render_pr.go             # Pull request creation (GitHub API via internal/gitops)
 ├── render_review.go         # Review/preview rendered resources
 
 internal/
@@ -70,7 +70,7 @@ internal/
 └── gitops/
     ├── operations.go        # Git commit/push using go-git
     ├── branch.go            # Branch creation
-    └── pr.go                # PR creation via gh CLI or GitHub API
+    └── pr.go                # PR creation via the GitHub API (go-github)
 ```
 
 ---

@@ -367,16 +367,10 @@ claims render --non-interactive -f params.yaml \
 
 **Requirements:**
 
-PR creation requires the GitHub CLI (`gh`) to be installed and authenticated:
-
-```bash
-# Install gh CLI
-# macOS: brew install gh
-# Linux: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
-
-# Authenticate
-gh auth login
-```
+claims opens the PR through the GitHub API (claims#108), in the repository of
+the checkout's `origin` remote. It needs a token that may create pull requests:
+`--git-token`, else `$GIT_TOKEN`, else `$GITHUB_TOKEN`, else the `gh` CLI's
+login (`gh auth token`). The `gh` CLI itself is not required.
 
 ### Source-Path Layout (`--layout source-path`)
 
@@ -475,7 +469,7 @@ claims delete --xr
 | `--source-path` | The XR's file instead of kind/name |
 | `--reason` | Shown in the PR body |
 | `--requested-by` | Shown in the PR body (default: the git user) |
-| `--create-pr` | Commit, push `delete-claim/<name>` and open the PR (needs `GIT_USER`/`GIT_TOKEN` and `gh`) |
+| `--create-pr` | Commit, push `delete-claim/<name>` and open the PR (needs `GIT_USER`/`GIT_TOKEN`) |
 | `--git-repo-url` | Work on a fresh clone instead of the local checkout |
 | `--dry-run` | Show file, runs, kustomization entries, branch and title |
 
@@ -521,11 +515,13 @@ claims change dev7-vm --run-id fix-docker                     # a chosen id
 | `--size` | New size: `small`, `medium`, `large` or `xlarge` (checked by the workflow) |
 | `--run-id`, `--retry` | Re-run the AnsibleRun with this `spec.ansible.runID`, or the next one (instead of `--size`) |
 | `--reboot` | When the one-shot run applies the resize in the guest: `evening` (19-22 Europe/Berlin, default), `now`, `none`, or an ISO-8601 time |
-| `--reason`, `--requested-by` | Shown in the PR body. `--requested-by` defaults to the git user, then the gh user |
+| `--reason`, `--requested-by` | Shown in the PR body. `--requested-by` defaults to the git user, then the token's GitHub login |
 | `--repo`, `--ref` | Fleet repository (default: the checkout's; without one `$CLAIMS_GITHUB_REPO` or `stuttgart-things/stuttgart-things`) and the branch the workflow runs on and the claim is read at (default `main`) |
 | `--dry-run`, `--no-wait` | Show the inputs only; or start the workflow and return without waiting |
 
-When the workflow refuses the change, for example with an unknown size, a size the VM already has, or a kind it does not resize, claims prints the workflow's `::error::` lines. Needs `gh`, logged in with permission to run workflows.
+When the workflow refuses the change, for example with an unknown size, a size the VM already has, or a kind it does not resize, claims prints the workflow's `::error::` lines (the failed job's annotations).
+
+claims talks to the GitHub API directly (claims#108): the token (see below) needs permission to run workflows (`actions: write`) and to read the repository. The `gh` CLI is not required. Outside a checkout, and in a checkout whose `origin` is not on GitHub, the workflow runs in `--repo`, `$CLAIMS_GITHUB_REPO` or `stuttgart-things/stuttgart-things`.
 
 ### Without a checkout of the fleet repository
 
@@ -541,7 +537,8 @@ claims change sbx-labul-vm --retry --dry-run   # runID read from main
 ```
 
 - Repository: `--repo` (change) / `--github` (list), else `$CLAIMS_GITHUB_REPO`, else `stuttgart-things/stuttgart-things`.
-- Token: `$GIT_TOKEN`, else `$GITHUB_TOKEN`, else the `gh` CLI's login (`gh auth token`). The repository is private, so there is no anonymous fallback.
+- Token: `$GIT_TOKEN`, else `$GITHUB_TOKEN`, else the `gh` CLI's login (`gh auth token`), the same for every GitHub call claims makes. The repository is private, so there is no anonymous fallback.
+- `$GITHUB_API_URL` points claims at another API endpoint (GitHub Enterprise).
 - A checkout still wins when there is one. It may be behind `main` or on another branch; then `git pull` first, or run claims outside it.
 - `claims delete` still needs a checkout: it writes and commits the removal itself.
 
@@ -800,7 +797,7 @@ task test-gitops
 │   │   ├── branch_test.go     # Branch management tests
 │   │   ├── auth.go            # Credential resolution
 │   │   ├── auth_test.go       # Auth tests
-│   │   ├── pr.go              # Pull request creation via gh CLI
+│   │   ├── pr.go              # Pull request creation via the GitHub API (go-github)
 │   │   └── pr_test.go         # PR creation tests
 │   ├── sops/
 │   │   ├── sops.go            # SOPS binary interaction (check, encrypt)
