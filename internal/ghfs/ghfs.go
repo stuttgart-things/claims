@@ -17,11 +17,12 @@ import (
 	"net/http"
 	"path"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/go-github/v93/github"
+
+	"github.com/stuttgart-things/claims/internal/ghclient"
 )
 
 // FS is one ref of a GitHub repository. It is safe for concurrent use.
@@ -67,11 +68,7 @@ func (f *FS) Ref() string { return f.ref }
 
 // SplitRepo splits "owner/name".
 func SplitRepo(ownerRepo string) (owner, repo string, err error) {
-	owner, repo, ok := strings.Cut(ownerRepo, "/")
-	if !ok || owner == "" || repo == "" || strings.Contains(repo, "/") {
-		return "", "", fmt.Errorf("%q is not owner/name", ownerRepo)
-	}
-	return owner, repo, nil
+	return ghclient.SplitRepo(ownerRepo)
 }
 
 // New reads the tree of ownerRepo at ref (a branch, tag or commit).
@@ -123,21 +120,15 @@ func New(ctx context.Context, client *github.Client, ownerRepo, ref string) (*FS
 	return f, nil
 }
 
-// describe turns the API's 401/403/404 into what to do about it: GitHub
-// answers 404 for a private repository the token cannot see.
+// describe: see ghclient.Describe; the trees API answers an unknown ref
+// with 422, which is a "not found" too.
 func describe(err error, ownerRepo, ref string) error {
+	action := fmt.Sprintf("reading %s@%s from GitHub", ownerRepo, ref)
 	var gerr *github.ErrorResponse
-	if errors.As(err, &gerr) && gerr.Response != nil {
-		switch gerr.Response.StatusCode {
-		case http.StatusUnauthorized:
-			return fmt.Errorf("reading %s from GitHub: the token was refused (401); check GITHUB_TOKEN / GIT_TOKEN or `gh auth status`", ownerRepo)
-		case http.StatusForbidden:
-			return fmt.Errorf("reading %s from GitHub: forbidden (403, rate limit or missing access): %v", ownerRepo, gerr.Message)
-		case http.StatusNotFound, http.StatusUnprocessableEntity:
-			return fmt.Errorf("reading %s@%s from GitHub: not found -- the repository or ref does not exist, or the token cannot read it (private repositories answer 404)", ownerRepo, ref)
-		}
+	if errors.As(err, &gerr) && gerr.Response != nil && gerr.Response.StatusCode == http.StatusUnprocessableEntity {
+		gerr.Response.StatusCode = http.StatusNotFound
 	}
-	return fmt.Errorf("reading %s@%s from GitHub: %w", ownerRepo, ref, err)
+	return ghclient.Describe(err, action)
 }
 
 func (f *FS) lookup(op, name string) (fileInfo, error) {

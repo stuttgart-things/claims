@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stuttgart-things/claims/internal/ghclient"
 )
 
 // TestMain keeps GitHub out of the tests: without this, a test outside a
@@ -15,7 +17,9 @@ func TestMain(m *testing.M) {
 	openRemoteFleet = func(repo, ref string) (*fleetSource, error) {
 		return nil, errors.New("remote fleet disabled in tests")
 	}
-	ghAuthToken = func() (string, error) { return "", errors.New("gh disabled in tests") }
+	ghclient.GHAuthToken = func() (string, error) { return "", errors.New("gh disabled in tests") }
+	// Requests that a test does not point at its own server go nowhere.
+	_ = os.Setenv(ghclient.EnvAPIURL, "http://127.0.0.1:1/")
 	os.Exit(m.Run())
 }
 
@@ -41,42 +45,6 @@ func ansibleVMDoc(name, file, runID string) string {
 	return "apiVersion: resources.stuttgart-things.com/v1alpha1\nkind: NativeProxmoxVM\nmetadata:\n  name: " + name +
 		"\n  annotations:\n    stuttgart-things.com/source-path: " + file +
 		"\nspec:\n  ansible:\n    enabled: true" + rid + "\n    pipelineNamespace: tekton-ci\n"
-}
-
-func TestGithubToken(t *testing.T) {
-	for _, tc := range []struct {
-		name, git, github, gh, want string
-		wantErr                     bool
-	}{
-		{name: "GIT_TOKEN first", git: "g1", github: "g2", gh: "g3", want: "g1"},
-		{name: "GITHUB_TOKEN", github: "g2", gh: "g3", want: "g2"},
-		{name: "gh login", gh: "g3", want: "g3"},
-		{name: "none", wantErr: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("GIT_TOKEN", tc.git)
-			t.Setenv("GITHUB_TOKEN", tc.github)
-			prev := ghAuthToken
-			ghAuthToken = func() (string, error) {
-				if tc.gh == "" {
-					return "", errors.New("not logged in")
-				}
-				return tc.gh, nil
-			}
-			t.Cleanup(func() { ghAuthToken = prev })
-
-			got, err := githubToken()
-			if tc.wantErr {
-				if !errors.Is(err, errNoGitHubToken) {
-					t.Fatalf("err = %v, want errNoGitHubToken", err)
-				}
-				return
-			}
-			if err != nil || got != tc.want {
-				t.Errorf("token = %q, %v; want %q", got, err, tc.want)
-			}
-		})
-	}
 }
 
 func TestFleetRepoName(t *testing.T) {

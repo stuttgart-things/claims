@@ -2,18 +2,12 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
-	"strings"
-	"time"
 
-	"github.com/google/go-github/v93/github"
-
+	"github.com/stuttgart-things/claims/internal/ghclient"
 	"github.com/stuttgart-things/claims/internal/ghfs"
-	"github.com/stuttgart-things/claims/internal/gitops"
 	"github.com/stuttgart-things/claims/internal/xrdelete"
 )
 
@@ -83,11 +77,7 @@ func openFleet(repo, ref string) (*fleetSource, error) {
 // openRemoteFleet reads a repository from GitHub; a variable so tests can
 // keep the network out.
 var openRemoteFleet = func(repo, ref string) (*fleetSource, error) {
-	token, err := githubToken()
-	if err != nil {
-		return nil, err
-	}
-	client, err := github.NewClient(github.WithAuthToken(token), github.WithTimeout(30*time.Second))
+	client, err := ghclient.FromEnv("")
 	if err != nil {
 		return nil, err
 	}
@@ -112,29 +102,4 @@ func xrsFiles(fsys fs.FS) []string {
 		files = append(files, m...)
 	}
 	return files
-}
-
-// errNoGitHubToken says how to give claims a token.
-var errNoGitHubToken = errors.New("no GitHub token to read the fleet repository without a checkout: " +
-	"set GITHUB_TOKEN (or GIT_TOKEN), log in with `gh auth login`, or run claims inside a checkout")
-
-// ghAuthToken asks the gh CLI for its token; a variable for tests.
-var ghAuthToken = func() (string, error) {
-	if _, err := exec.LookPath("gh"); err != nil {
-		return "", err
-	}
-	out, err := exec.Command("gh", "auth", "token").Output()
-	return strings.TrimSpace(string(out)), err
-}
-
-// githubToken: GIT_TOKEN / GITHUB_TOKEN (as for git pushes), else gh's login.
-// The fleet repository is private, so there is no anonymous fallback.
-func githubToken() (string, error) {
-	if _, token := gitops.ResolveCredentialsOptional("", ""); token != "" {
-		return token, nil
-	}
-	if token, err := ghAuthToken(); err == nil && token != "" {
-		return token, nil
-	}
-	return "", errNoGitHubToken
 }
