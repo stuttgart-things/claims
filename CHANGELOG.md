@@ -1,3 +1,10 @@
+# [0.24.0](https://github.com/stuttgart-things/claims/compare/v0.23.0...v0.24.0) (2026-11-07)
+
+
+### Features
+
+* **github:** talk to GitHub through go-github, the gh CLI is optional ([#110](https://github.com/stuttgart-things/claims/issues/110)) ([6191bbd](https://github.com/stuttgart-things/claims/commit/6191bbd4d8d639def3449825b8b0921737a9ecd4)), closes [#107](https://github.com/stuttgart-things/claims/issues/107)
+
 # [0.23.0](https://github.com/stuttgart-things/claims/compare/v0.22.0...v0.23.0) (2026-11-07)
 
 
