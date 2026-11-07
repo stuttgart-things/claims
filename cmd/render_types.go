@@ -71,6 +71,15 @@ type GitConfig struct {
 	Token        string
 }
 
+// token is the --git-token flag ("" when there is no git config): it also
+// opens the PR through the GitHub API.
+func (g *GitConfig) token() string {
+	if g == nil {
+		return ""
+	}
+	return g.Token
+}
+
 // PRConfig holds pull request configuration
 type PRConfig struct {
 	Create      bool

@@ -1,10 +1,12 @@
 package gitops
 
 import (
-	"bytes"
+	"context"
 	"fmt"
-	"os/exec"
-	"strings"
+
+	"github.com/google/go-github/v93/github"
+
+	"github.com/stuttgart-things/claims/internal/ghclient"
 )
 
 // PRConfig holds pull request configuration
@@ -13,7 +15,8 @@ type PRConfig struct {
 	Description string
 	Labels      []string
 	BaseBranch  string
-	HeadBranch  string
+	HeadBranch  string // "" = the checkout's current branch
+	Token       string // "" = ghclient.Token's order (GIT_TOKEN, GITHUB_TOKEN, gh)
 }
 
 // PRResult holds the result of PR creation
@@ -22,94 +25,100 @@ type PRResult struct {
 	URL    string
 }
 
-// CreatePR creates a pull request using gh CLI
-func CreatePR(config PRConfig, repoPath string) (*PRResult, error) {
-	// Check if gh is available
-	if _, err := exec.LookPath("gh"); err != nil {
-		return nil, fmt.Errorf("gh CLI not found: install from https://cli.github.com")
+// prTarget is the client and the GitHub repository of the checkout at
+// repoPath (its origin remote).
+func prTarget(repoPath, token string) (*github.Client, string, string, error) {
+	g, err := New(repoPath, "", "")
+	if err != nil {
+		return nil, "", "", err
 	}
-
-	args := []string{"pr", "create",
-		"--title", config.Title,
-		"--body", config.Description,
-		"--base", config.BaseBranch,
+	url, err := g.GetRemoteURL("origin")
+	if err != nil {
+		return nil, "", "", fmt.Errorf("finding the GitHub repository: %w", err)
 	}
-
-	// Add labels
-	for _, label := range config.Labels {
-		if label != "" {
-			args = append(args, "--label", label)
-		}
+	ownerRepo, err := ghclient.RepoFromURL(url)
+	if err != nil {
+		return nil, "", "", err
 	}
-
-	// Add head branch if specified
-	if config.HeadBranch != "" {
-		args = append(args, "--head", config.HeadBranch)
+	owner, repo, _ := ghclient.SplitRepo(ownerRepo)
+	client, err := ghclient.FromEnv(token)
+	if err != nil {
+		return nil, "", "", err
 	}
-
-	cmd := exec.Command("gh", args...)
-	cmd.Dir = repoPath
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		errMsg := stderr.String()
-		if errMsg == "" {
-			errMsg = err.Error()
-		}
-		return nil, fmt.Errorf("gh pr create failed: %s", errMsg)
-	}
-
-	// Parse PR URL from output
-	prURL := strings.TrimSpace(stdout.String())
-
-	return &PRResult{
-		URL: prURL,
-	}, nil
+	return client, owner, repo, nil
 }
 
-// AddLabelsToPR adds labels to an existing PR
+// CreatePR opens a pull request in the GitHub repository of the checkout at
+// repoPath (its origin remote) through the GitHub API, then adds the labels.
+// When only the labels fail, the PR is returned together with the error.
+func CreatePR(config PRConfig, repoPath string) (*PRResult, error) {
+	client, owner, repo, err := prTarget(repoPath, config.Token)
+	if err != nil {
+		return nil, err
+	}
+	head := config.HeadBranch
+	if head == "" {
+		g, err := New(repoPath, "", "")
+		if err != nil {
+			return nil, err
+		}
+		if head, err = g.GetCurrentBranch(); err != nil {
+			return nil, fmt.Errorf("finding the branch to open the PR from: %w", err)
+		}
+	}
+	ctx := context.Background()
+	pr, _, err := client.PullRequests.Create(ctx, owner, repo, github.CreatePullRequest{
+		Title: github.Ptr(config.Title),
+		Body:  github.Ptr(config.Description),
+		Base:  config.BaseBranch,
+		Head:  head,
+	})
+	if err != nil {
+		return nil, ghclient.Describe(err, fmt.Sprintf("creating the pull request %s -> %s in %s/%s", head, config.BaseBranch, owner, repo))
+	}
+	res := &PRResult{Number: pr.GetNumber(), URL: pr.GetHTMLURL()}
+	if err := addLabels(ctx, client, owner, repo, res.Number, config.Labels); err != nil {
+		return res, fmt.Errorf("created %s, but %w", res.URL, err)
+	}
+	return res, nil
+}
+
+// AddLabelsToPR adds labels to an existing PR of the checkout's repository.
 func AddLabelsToPR(prNumber int, labels []string, repoPath string) error {
+	if len(nonEmpty(labels)) == 0 {
+		return nil
+	}
+	client, owner, repo, err := prTarget(repoPath, "")
+	if err != nil {
+		return err
+	}
+	return addLabels(context.Background(), client, owner, repo, prNumber, labels)
+}
+
+func addLabels(ctx context.Context, client *github.Client, owner, repo string, number int, labels []string) error {
+	labels = nonEmpty(labels)
 	if len(labels) == 0 {
 		return nil
 	}
+	if _, _, err := client.Issues.AddLabelsToIssue(ctx, owner, repo, number, labels); err != nil {
+		return ghclient.Describe(err, fmt.Sprintf("adding labels %v", labels))
+	}
+	return nil
+}
 
-	args := []string{"pr", "edit", fmt.Sprintf("%d", prNumber)}
-	for _, label := range labels {
-		if label != "" {
-			args = append(args, "--add-label", label)
+func nonEmpty(in []string) []string {
+	var out []string
+	for _, s := range in {
+		if s != "" {
+			out = append(out, s)
 		}
 	}
-
-	cmd := exec.Command("gh", args...)
-	cmd.Dir = repoPath
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("adding labels failed: %s", stderr.String())
-	}
-
-	return nil
+	return out
 }
 
-// CheckGHAuth verifies gh CLI is authenticated
-func CheckGHAuth() error {
-	cmd := exec.Command("gh", "auth", "status")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("gh CLI not authenticated: run 'gh auth login'")
-	}
-	return nil
-}
-
-// CheckGHInstalled checks if gh CLI is installed
-func CheckGHInstalled() bool {
-	_, err := exec.LookPath("gh")
-	return err == nil
+// CheckGitHubAuth fails early, before a push, when there is no token to open
+// the PR with.
+func CheckGitHubAuth(token string) error {
+	_, err := ghclient.Token(token)
+	return err
 }

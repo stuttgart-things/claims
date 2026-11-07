@@ -112,7 +112,7 @@ func executeEncryptGitOperations(result *EncryptResult, config *EncryptConfig) e
 
 // executeEncryptPRCreation creates a PR for the encrypt operation
 func executeEncryptPRCreation(result *EncryptResult, config *EncryptConfig, repoPath, headBranch string) error {
-	if err := gitops.CheckGHAuth(); err != nil {
+	if err := gitops.CheckGitHubAuth(config.GitConfig.token()); err != nil {
 		return err
 	}
 
@@ -137,6 +137,7 @@ func executeEncryptPRCreation(result *EncryptResult, config *EncryptConfig, repo
 		Labels:      config.PRConfig.Labels,
 		BaseBranch:  baseBranch,
 		HeadBranch:  headBranch,
+		Token:       config.GitConfig.token(),
 	}
 
 	fmt.Println("Creating pull request...")
