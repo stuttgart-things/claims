@@ -1,3 +1,10 @@
+# [0.26.0](https://github.com/stuttgart-things/claims/compare/v0.25.0...v0.26.0) (2026-11-11)
+
+
+### Features
+
+* **preflight:** named API endpoints, preflight checks and claims doctor ([#118](https://github.com/stuttgart-things/claims/issues/118)) ([7e457a6](https://github.com/stuttgart-things/claims/commit/7e457a672e84d479d52d500b4290425028795190)), closes [#114](https://github.com/stuttgart-things/claims/issues/114) [#116](https://github.com/stuttgart-things/claims/issues/116) [#116](https://github.com/stuttgart-things/claims/issues/116) [#114](https://github.com/stuttgart-things/claims/issues/114) [#116](https://github.com/stuttgart-things/claims/issues/116)
+
 # [0.25.0](https://github.com/stuttgart-things/claims/compare/v0.24.0...v0.25.0) (2026-11-11)
 
 
