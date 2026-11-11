@@ -265,8 +265,7 @@ func pump(t *testing.T, g *huh.Group, msg tea.Msg) {
 		msgs = nil
 		results := make(chan tea.Msg, 64)
 		pending := 0
-		var run func(cmd tea.Cmd)
-		run = func(cmd tea.Cmd) {
+		run := func(cmd tea.Cmd) {
 			if cmd == nil {
 				return
 			}
