@@ -1,3 +1,10 @@
+# [0.27.0](https://github.com/stuttgart-things/claims/compare/v0.26.0...v0.27.0) (2026-11-11)
+
+
+### Features
+
+* **render:** conditional interactive form (showWhen, enumWhen, field errors) ([#119](https://github.com/stuttgart-things/claims/issues/119)) ([8d895c0](https://github.com/stuttgart-things/claims/commit/8d895c09bf5483e940d2cdc278b3a45b58cd7b8d)), closes [claim-machinery-api#135](https://github.com/claim-machinery-api/issues/135) [#115](https://github.com/stuttgart-things/claims/issues/115)
+
 # [0.26.0](https://github.com/stuttgart-things/claims/compare/v0.25.0...v0.26.0) (2026-11-11)
 
 
