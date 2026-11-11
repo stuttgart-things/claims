@@ -3,7 +3,12 @@ package gitops
 import (
 	"fmt"
 	"os"
+
+	"github.com/stuttgart-things/claims/internal/ghclient"
 )
+
+// ErrNoGitToken says how to give claims a token for push and clone.
+var ErrNoGitToken = fmt.Errorf("git credentials required: pass --git-token, set GIT_TOKEN or GITHUB_TOKEN, or log in with `gh auth login` (--git-user/GIT_USER is optional)")
 
 // ResolveCredentials gets git credentials from flags or environment
 func ResolveCredentials(user, token string) (string, string, error) {
@@ -13,18 +18,14 @@ func ResolveCredentials(user, token string) (string, string, error) {
 			user = os.Getenv("GITHUB_USER")
 		}
 	}
-	if token == "" {
-		token = os.Getenv("GIT_TOKEN")
-		if token == "" {
-			token = os.Getenv("GITHUB_TOKEN")
-		}
+	// The token is the flag, GIT_TOKEN, GITHUB_TOKEN, else the gh CLI's
+	// login (as for the GitHub API). The user name is optional: without one,
+	// TokenUser authenticates the token and commits are by claims-cli.
+	t, err := ghclient.Token(token)
+	if err != nil {
+		return "", "", ErrNoGitToken
 	}
-
-	if user == "" || token == "" {
-		return "", "", fmt.Errorf("git credentials required:\nset --git-user/--git-token or GIT_USER/GIT_TOKEN (or GITHUB_USER/GITHUB_TOKEN) environment variables")
-	}
-
-	return user, token, nil
+	return user, t, nil
 }
 
 // ResolveCredentialsOptional gets git credentials if available, but doesn't error if missing

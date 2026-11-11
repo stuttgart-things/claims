@@ -255,6 +255,9 @@ func runEncryptInteractive(config *EncryptConfig) error {
 				}
 				config.PRConfig = prConfig
 			}
+			if err := preflightGitOnly(config.GitConfig, config.PRConfig, outputDir); err != nil {
+				return err
+			}
 		}
 
 		if err := executeEncryptGitOperations(result, config); err != nil {

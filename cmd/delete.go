@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -106,6 +107,8 @@ func init() {
 	deleteCmd.Flags().StringVar(&deleteXR.RequestedBy, "requested-by", "", "Who asks for the deletion (PR body; default: the git user)")
 	deleteCmd.Flags().BoolVar(&deleteXR.pick, "xr", false, "Pick an XR from the *-xrs directories interactively")
 
+	addPreflightFlag(deleteCmd)
+
 	rootCmd.AddCommand(deleteCmd)
 }
 
@@ -163,6 +166,15 @@ func runDelete(cmd *cobra.Command, args []string) {
 		config.Interactive = true
 	} else {
 		config.Interactive = isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
+	}
+
+	// Token, remote and PR access before anything is deleted (claims#114).
+	if config.GitConfig != nil && !config.DryRun && !skipPreflight {
+		plan := gitPlanFor(config.GitConfig, config.PRConfig, ".")
+		plan.Branch = "" // delete names its own branch (delete-<name>, delete-claim/<name>)
+		report := &preflightReport{}
+		checkGit(context.Background(), report, plan)
+		exitOn(finishPreflight(report))
 	}
 
 	var err error

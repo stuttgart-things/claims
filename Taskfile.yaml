@@ -81,8 +81,9 @@ tasks:
     vars:
       PARAMS_FILE: '{{.PARAMS_FILE | default "tests/params.yaml"}}'
       OUTPUT_DIR: '{{.OUTPUT_DIR | default "output"}}'
+      API_URL: '{{.API_URL | default "http://localhost:8080"}}'  # task run-claim-api; claims has no localhost default
     cmds:
-      - go run . render --non-interactive -f {{.PARAMS_FILE}} -o {{.OUTPUT_DIR}}
+      - go run . render --non-interactive -a {{.API_URL}} -f {{.PARAMS_FILE}} -o {{.OUTPUT_DIR}}
 
   render-inline:
     desc: Run render in non-interactive mode with inline template and params
@@ -90,8 +91,9 @@ tasks:
       TEMPLATE: '{{.TEMPLATE | default "vspherevm"}}'
       PARAMS: '{{.PARAMS | default "name=test"}}'
       OUTPUT_DIR: '{{.OUTPUT_DIR | default "output"}}'
+      API_URL: '{{.API_URL | default "http://localhost:8080"}}'
     cmds:
-      - go run . render --non-interactive -t {{.TEMPLATE}} -p {{.PARAMS}} -o {{.OUTPUT_DIR}}
+      - go run . render --non-interactive -a {{.API_URL}} -t {{.TEMPLATE}} -p {{.PARAMS}} -o {{.OUTPUT_DIR}}
 
   test-gitops:
     desc: Run GitOps integration tests

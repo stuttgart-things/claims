@@ -316,6 +316,10 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 					}
 					config.PRConfig = prConfig
 				}
+				// Check token, remote and branch before writing (claims#114).
+				if err := preflightGitOnly(config.GitConfig, config.PRConfig, outputConfig.Directory); err != nil {
+					return err
+				}
 			}
 			break
 		}

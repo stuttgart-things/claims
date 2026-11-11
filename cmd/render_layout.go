@@ -212,7 +212,7 @@ func runSourcePathLayout(orders []layoutOrder, config *RenderConfig) error {
 	git := config.GitConfig != nil && (config.GitConfig.Commit || config.GitConfig.Push)
 	repoRoot := config.OutputDir
 	var g *gitops.GitOps
-	var user string
+	var user, prevBranch string
 
 	if git {
 		var token string
@@ -250,6 +250,7 @@ func runSourcePathLayout(orders []layoutOrder, config *RenderConfig) error {
 			}
 		}
 
+		prevBranch = currentBranch(g)
 		branch := config.GitConfig.Branch
 		if branch == "" {
 			branch = conv.Branch
@@ -313,7 +314,7 @@ func runSourcePathLayout(orders []layoutOrder, config *RenderConfig) error {
 	}
 	fmt.Printf("Pushing %s to %s...\n", config.GitConfig.Branch, remote)
 	if err := g.Push(remote, config.GitConfig.Branch); err != nil {
-		return err
+		return pushFailed(err, g, remote, config.GitConfig.Branch, prevBranch, prBaseOf(config.PRConfig), config.GitConfig.RepoURL != "")
 	}
 	fmt.Println(successStyle.Render("Pushed successfully"))
 
@@ -343,7 +344,7 @@ func runSourcePathLayout(orders []layoutOrder, config *RenderConfig) error {
 	fmt.Println("Creating pull request...")
 	res, err := gitops.CreatePR(pr, g.RepoPath)
 	if err != nil {
-		return fmt.Errorf("creating pull request: %w", err)
+		return prFailed(err, pr.HeadBranch, pr.BaseBranch)
 	}
 	fmt.Println(successStyle.Render(fmt.Sprintf("Created PR: %s", res.URL)))
 	if config.PRConfig.Merge {

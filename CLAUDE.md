@@ -19,7 +19,7 @@ task build
 
 # Run render locally with test params
 task render
-go run . render --non-interactive -f tests/params.yaml -o output
+go run . render --non-interactive -a http://localhost:8080 -f tests/params.yaml -o output
 
 # Start the claim-machinery-api locally via Dagger
 task run-claim-api
@@ -55,15 +55,20 @@ Commands auto-detect TTY to choose interactive vs non-interactive mode using `go
 
 - **`internal/templates`** - HTTP client for claim-machinery-api (`GET /api/v1/claim-templates`, `POST .../order`). Uses `NewClientWithHTTPClient()` for test injection.
 - **`internal/apiauth`** - Optional bearer-token auth for claim-machinery-api (off by default): `CLAIM_API_TOKEN`/`--api-token`, or OAuth2 client credentials `CLAIM_API_OIDC_*`/`--api-oidc-*` (token cached until expiry). Wired in via `newAPIClient()` in `cmd/apiauth.go` -> `templates.NewClientWithAuth()`; 401/403 errors carry `apiauth.StatusHint`.
-- **`internal/gitops`** - Git operations via go-git: clone, branch, commit, push. PR creation uses the GitHub API (go-github, `internal/ghclient`) in the repository of the checkout's `origin`. Credential resolution: flags > `GIT_USER/GIT_TOKEN` > `GITHUB_USER/GITHUB_TOKEN`.
+- **`internal/gitops`** - Git operations via go-git: clone, branch, commit, push. PR creation uses the GitHub API (go-github, `internal/ghclient`) in the repository of the checkout's `origin`. Credential resolution: flags > `GIT_USER/GIT_TOKEN` > `GITHUB_USER/GITHUB_TOKEN` > `gh auth token`; the user is optional.
 - **`internal/params`** - Parameter file parsing (YAML/JSON). Supports single `template:` and multi `templates:` format. Inline params parsed as `key=value`.
 - **`internal/registry`** - CRUD for `claims/registry.yaml` (tracks rendered claims as entries with metadata).
 - **`internal/xrdelete`** - Finds, lists and plans the removal of XRs in `clusters/*/*/*-xrs/`. The `…FS` variants work on any `fs.FS`; the repoRoot variants wrap `os.DirFS`.
 - **`internal/ghfs`** - Read-only `fs.FS` over one ref of a GitHub repository (go-github: 1 tree call, blobs on demand plus `Prefetch`). `cmd/fleet.go` uses it when there is no local checkout of the fleet repository (claims#107). Tests stub `openRemoteFleet` in `TestMain` (`cmd/fleet_test.go`).
 - **`internal/ghclient`** - The go-github client for every GitHub call (claims#108; the `gh` CLI is optional): `Token(flag)` = flag, `GIT_TOKEN`, `GITHUB_TOKEN`, then `gh auth token` (`GHAuthToken`, a var); `New` honours `GITHUB_API_URL`; `Describe` turns 401/403/404/422 into hints. Tests point `GITHUB_API_URL` at an `httptest` server (`cmd/github_fake_test.go`); `TestMain` points it at a dead address and stubs `GHAuthToken`.
 - **`cmd/merge.go`** - `claims merge` and `--merge` on render/change/delete (claims#113): resolves the PR (number, URL, or the branches `vm-`/`change-claim/`/`delete-claim/`/`claim-`), waits for the checks (required ones, else all), squash-merges with the head SHA pinned and deletes the branch. Guard rails: only claims branches, same repo, into the default branch; merges only on `mergeable_state` clean/unstable/has_hooks, never via an admin bypass. Every PR-creation site calls `mergeCreatedPR` when `PRConfig.Merge` / `ChangeConfig.Merge` is set. Tests: `cmd/merge_test.go` (`fakeMergeAPI`; `mergePoll`, `mergeCheckGrace`, `stdinIsTerminal`, `confirmMerge` are vars).
+- **`internal/endpoint`** - Named claim-machinery-api endpoints in `~/.config/claims/config.yaml` (`$CLAIMS_CONFIG_FILE`): url, issuer, client-id, ca-file, current (claims#116). `cmd/endpoint.go` resolves the API: `-a` > `$CLAIM_API_URL` > `--endpoint`/`$CLAIM_ENDPOINT` > current; no localhost default (interactive: picker, `pickEndpoint` var; else `errNoEndpoint`).
 - **`internal/kustomize`** - Read/write `kustomization.yaml`, idempotent resource add/remove.
 - **`internal/sops`** - SOPS encryption via age. Requires `sops` binary and `SOPS_AGE_RECIPIENTS` env var.
+
+### Preflight (claims#114)
+
+`cmd/preflight.go`: `render`/`encrypt`/`delete` collect a `preflightReport` (API endpoint, `GET /api/v1/claim-templates`, auth, git repo/branch/token/`git ls-remote` via the `probeRemote` var, GitHub push permission) before writing anything and fail with every problem + fix; `--skip-preflight` skips it, `claims doctor` (`cmd/doctor.go`) runs it read-only. Push/PR failures after the commit are wrapped by `pushFailed`/`prFailed` (`cmd/push_failure.go`) with retry/undo commands instead of a rollback. SSH remotes are pushed/cloned over HTTPS with the token (`gitops.HTTPSURL`); the token alone suffices (`gitops.TokenUser`), `ResolveCredentials` falls back to `gh auth token`.
 
 ### GitOps Workflow
 

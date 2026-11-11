@@ -122,6 +122,9 @@ func runDeleteInteractive(config *DeleteConfig) error {
 				}
 				config.PRConfig = prConfig
 			}
+			if err := preflightGitOnly(config.GitConfig, config.PRConfig, repoRoot); err != nil {
+				return err
+			}
 		}
 	}
 

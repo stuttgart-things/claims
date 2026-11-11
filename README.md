@@ -15,7 +15,7 @@ Terminal-based CLI for rendering claims via the claim-machinery API.
 
 - Go 1.25.5+
 - [Task](https://taskfile.dev/) (optional
-- claim-machinery API läuft (Standard: `http://localhost:8080`)
+- eine claim-machinery-api (`-a http://localhost:8080`, `CLAIM_API_URL` oder `claims endpoint add`; es gibt keinen localhost-Default mehr)
 
 ### CLONE + RUN
 
@@ -47,6 +47,8 @@ go build -o claims .
 | `claims login` | Log in to claim-machinery-api with ZITADEL (device flow) |
 | `claims logout` | Forget the cached login for an API URL |
 | `claims whoami` | Show the user, roles and groups claims sends to the API |
+| `claims endpoint` | Named API endpoints: `list`, `use`, `add`, `remove`, `current` |
+| `claims doctor` | Check API endpoint, login and git/GitHub credentials (changes nothing) |
 | `claims version` | Print version information |
 
 ### render
@@ -57,7 +59,9 @@ claims render [flags]
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--api-url` | `-a` | API URL (default: `$CLAIM_API_URL` or `http://localhost:8080`) |
+| `--api-url` | `-a` | API URL (else `$CLAIM_API_URL`, `--endpoint`, the current endpoint; no localhost default) |
+| `--endpoint` | | Named endpoint from `claims endpoint list` (or `$CLAIM_ENDPOINT`) |
+| `--skip-preflight` | | Do not check API, login and git/GitHub credentials before starting |
 | `--api-token` | | Bearer token for claim-machinery-api (default: `$CLAIM_API_TOKEN`); see [API Authentication](#api-authentication) |
 | `--api-oidc-token-url` | | OIDC token endpoint for client credentials (default: `$CLAIM_API_OIDC_TOKEN_URL`) |
 | `--api-oidc-client-id` | | OIDC client ID (default: `$CLAIM_API_OIDC_CLIENT_ID`) |
@@ -92,8 +96,11 @@ claims render [flags]
 **Examples:**
 
 ```bash
-# Use default API URL
+# Use the current endpoint (claims endpoint use <name>)
 claims render
+
+# A named endpoint
+claims render --endpoint labul
 
 # Custom API URL
 claims render --api-url http://api.example.com:8080
@@ -190,6 +197,34 @@ CLAIM_API_URL=http://dev-api:8080:http://staging-api:8080 \
 ```
 
 URL colons in `http://`, `https://`, and port numbers are handled correctly — only bare `:` between URLs acts as a separator.
+
+### Endpoints (claims endpoint)
+
+Named claim-machinery-api endpoints, like kube contexts, in `~/.config/claims/config.yaml` (override: `CLAIMS_CONFIG_FILE`). Each holds the API URL and what `claims login` needs (issuer, client ID, optional CA file). Nothing is pre-configured.
+
+```bash
+claims endpoint add labda https://claim-machinery-api.machinery.4sthings.tiab.ssc.sva.de \
+  --issuer https://zitadel.sthings-infra.4sthings.tiab.ssc.sva.de --client-id <id>@claims --use
+claims endpoint add labul https://claim-machinery-api.machinery-labul.sthings-vsphere.labul.sva.de
+claims endpoint list            # * marks the current one
+claims endpoint use labul
+claims endpoint current         # which API a command would use, and why
+claims login --endpoint labda   # issuer/client-id come from the endpoint
+claims render --endpoint labda
+```
+
+Which API a command talks to: `-a/--api-url` > `$CLAIM_API_URL` > `--endpoint`/`$CLAIM_ENDPOINT` > the current endpoint. With none of them an interactive command offers a picker and a non-interactive one fails with the fix — there is **no implicit `http://localhost:8080`** any more; pass `-a http://localhost:8080` for a local API. `render`, `encrypt` and `whoami` print the endpoint name with the URL. See [docs/11-endpoints-preflight.md](docs/11-endpoints-preflight.md).
+
+### Preflight and claims doctor
+
+`render`, `encrypt` and `delete` check before rendering, branching or committing: the API endpoint is set, answers like a claim-machinery-api and accepts the credentials; with `--git-push`/`--create-pr` a git token exists (`--git-token`, `GIT_TOKEN`, `GITHUB_TOKEN`, else `gh auth token`), the remote accepts it (`git ls-remote`), the branch to create does not exist yet, and the token may push to the GitHub repository. Every problem is listed at once with the flag or variable that fixes it, and the command exits 1 with nothing written. `--skip-preflight` skips the checks; `claims doctor` runs them alone.
+
+```bash
+claims doctor                          # current endpoint + the checkout in .
+claims doctor --endpoint labul --dir ~/projects/stuttgart-things
+```
+
+SSH remotes (`git@github.com:o/r.git`) are pushed to over HTTPS with the token; claims does not use the SSH agent. If a push or PR still fails after the commit, the commit stays where it is and the error prints the commands to retry (`git push`, `gh pr create`) or undo it.
 
 ### API Authentication
 
@@ -331,7 +366,7 @@ claims render --non-interactive -t volumeclaim-simple -p name=my-volume \
 
 **Authentication:**
 
-Git credentials can be provided via flags or environment variables:
+Pushing needs a token: `--git-token`, `GIT_TOKEN`, `GITHUB_TOKEN`, else the gh CLI's login (`gh auth token`). `--git-user`/`GIT_USER` is optional (it is also the commit author). SSH remotes are pushed to over HTTPS with the token.
 
 ```bash
 # Via flags
@@ -590,7 +625,9 @@ claims encrypt [flags]
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--api-url` | `-a` | API URL (default: `$CLAIM_API_URL` or `http://localhost:8080`) |
+| `--api-url` | `-a` | API URL (else `$CLAIM_API_URL`, `--endpoint`, the current endpoint; no localhost default) |
+| `--endpoint` | | Named endpoint from `claims endpoint list` (or `$CLAIM_ENDPOINT`) |
+| `--skip-preflight` | | Do not check API, login and git/GitHub credentials before starting |
 | `--api-token` | | Bearer token for claim-machinery-api (default: `$CLAIM_API_TOKEN`); see [API Authentication](#api-authentication) |
 | `--api-oidc-token-url` | | OIDC token endpoint for client credentials (default: `$CLAIM_API_OIDC_TOKEN_URL`) |
 | `--api-oidc-client-id` | | OIDC client ID (default: `$CLAIM_API_OIDC_CLIENT_ID`) |
@@ -700,15 +737,17 @@ rendering, the abort offers to print the YAML or save it to a temp file first.
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
-| `CLAIM_API_URL` | API base URL (colon-separated for multiple endpoints) | `http://localhost:8080` |
+| `CLAIM_API_URL` | API base URL (colon-separated for multiple endpoints); wins over `CLAIM_ENDPOINT` | - (current endpoint; no localhost default) |
+| `CLAIM_ENDPOINT` | Named endpoint to use (like `--endpoint`) | current endpoint |
+| `CLAIMS_CONFIG_FILE` | Endpoint config file | `~/.config/claims/config.yaml` |
 | `CLAIM_API_TOKEN` | Static bearer token for claim-machinery-api (wins over client credentials) | - (no auth) |
 | `CLAIM_API_OIDC_TOKEN_URL` | OIDC token endpoint for client-credentials auth | - |
 | `CLAIM_API_OIDC_CLIENT_ID` | OIDC client ID for client-credentials auth | - |
 | `CLAIM_API_OIDC_CLIENT_SECRET` | OIDC client secret for client-credentials auth | - |
 | `CLAIM_API_OIDC_SCOPE` | OIDC scope(s), space- or comma-separated (optional) | - |
-| `GIT_USER` | Git username for push operations | - |
+| `GIT_USER` | Git username for push operations (optional with a token) | - |
 | `GIT_TOKEN` | Git token/password for push operations | - |
-| `GITHUB_TOKEN` | GitHub token (fallback for `GIT_TOKEN`) | - |
+| `GITHUB_TOKEN` | GitHub token (fallback for `GIT_TOKEN`; else `gh auth token`) | - |
 | `CLAIMS_REPO` | Fleet repository root for `claims list` | git root of the cwd |
 | `CLAIMS_REGISTRY` | `registry.yaml` for `claims list` | `<repo>/claims/registry.yaml` |
 | `NO_COLOR` | No banner (the banner is also left out when stdout is not a terminal) | - |

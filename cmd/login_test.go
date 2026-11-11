@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -187,19 +188,20 @@ func TestLoginNeedsIssuerAndClient(t *testing.T) {
 }
 
 func TestSingleAPIURL(t *testing.T) {
-	t.Setenv("CLAIM_API_URL", "")
-	if u, _ := singleAPIURL(""); u != "http://localhost:8080" {
-		t.Errorf("default = %s", u)
+	isolateEndpoints(t)
+	// No localhost default any more (claims#116).
+	if _, err := singleAPIURL(""); !errors.Is(err, errNoEndpoint) {
+		t.Errorf("nothing set: %v", err)
 	}
-	if u, _ := singleAPIURL("https://x/claims/"); u != "https://x/claims" {
-		t.Errorf("flag = %s", u)
+	if u, _ := singleAPIURL("https://x/claims/"); u.URL != "https://x/claims" {
+		t.Errorf("flag = %s", u.URL)
 	}
 	t.Setenv("CLAIM_API_URL", "https://a:8080:https://b")
 	if _, err := singleAPIURL(""); err == nil || !strings.Contains(err.Error(), "--api-url") {
 		t.Errorf("multiple endpoints: %v", err)
 	}
 	t.Setenv("CLAIM_API_URL", "https://a/claims")
-	if u, _ := singleAPIURL(""); u != "https://a/claims" {
-		t.Errorf("env = %s", u)
+	if u, _ := singleAPIURL(""); u.URL != "https://a/claims" {
+		t.Errorf("env = %s", u.URL)
 	}
 }

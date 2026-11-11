@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -49,7 +50,9 @@ var encryptCmd = &cobra.Command{
 }
 
 func init() {
-	encryptCmd.Flags().StringVarP(&encryptAPIURL, "api-url", "a", "", "API URL (default: $CLAIM_API_URL or http://localhost:8080)")
+	encryptCmd.Flags().StringVarP(&encryptAPIURL, "api-url", "a", "", "API URL (default: $CLAIM_API_URL, --endpoint, the current endpoint; no localhost default)")
+	addEndpointFlag(encryptCmd)
+	addPreflightFlag(encryptCmd)
 	encryptCmd.Flags().StringVarP(&encryptTemplate, "template", "t", "", "Template name to use")
 	encryptCmd.Flags().StringVar(&encryptSecretName, "name", "", "Secret name")
 	encryptCmd.Flags().StringVar(&encryptNamespace, "namespace", "", "Secret namespace")
@@ -86,16 +89,7 @@ func init() {
 
 func runEncrypt(cmd *cobra.Command, args []string) {
 
-	// Get API URL from flag, environment, or default
-	if encryptAPIURL == "" {
-		encryptAPIURL = os.Getenv("CLAIM_API_URL")
-	}
-	if encryptAPIURL == "" {
-		encryptAPIURL = "http://localhost:8080"
-	}
-
 	config := &EncryptConfig{
-		APIUrl:          encryptAPIURL,
 		Template:        encryptTemplate,
 		SecretName:      encryptSecretName,
 		SecretNamespace: encryptNamespace,
@@ -147,6 +141,26 @@ func runEncrypt(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 	config.Auth = auth
+
+	// API: -a, $CLAIM_API_URL, --endpoint/$CLAIM_ENDPOINT, the current
+	// endpoint; no localhost default (claims#116). Then the preflight
+	// (claims#114) before anything is written.
+	target, targetErr := resolveAPITarget(encryptAPIURL, config.Interactive)
+	if isAbort(targetErr) || (targetErr != nil && skipPreflight) {
+		exitOn(targetErr)
+	}
+	report := &preflightReport{}
+	if checkAPITarget(report, target, targetErr) {
+		config.APIUrl = splitAPIURLs(target.URL)[0]
+		_, _ = fmt.Fprintf(os.Stdout, "API: %s\n", targetLabel(target, config.APIUrl))
+		if !skipPreflight {
+			checkAPI(context.Background(), report, target, config.APIUrl, config.Auth)
+		}
+	}
+	if config.GitConfig != nil && !config.DryRun && !skipPreflight {
+		checkGit(context.Background(), report, gitPlanFor(config.GitConfig, config.PRConfig, config.OutputDir))
+	}
+	exitOn(finishPreflight(report))
 
 	var err error
 	if config.Interactive {
