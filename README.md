@@ -42,6 +42,7 @@ go build -o claims .
 | `claims encrypt` | Create a SOPS-encrypted Kubernetes Secret via Git PR |
 | `claims delete` | Delete a claim via Git PR |
 | `claims change` (alias `resize`) | Change a claim (VM size, Ansible re-run) via Git PR |
+| `claims merge` | Merge an order, change or deletion PR (squash) after its checks |
 | `claims list` | List claims (registry and `*-xrs` directories) |
 | `claims login` | Log in to claim-machinery-api with ZITADEL (device flow) |
 | `claims logout` | Forget the cached login for an API URL |
@@ -408,6 +409,10 @@ claims render --non-interactive --layout source-path -o ~/projects/stuttgart-thi
 # Order it: branch vm-my-vm, commit, push, PR
 claims render --non-interactive --layout source-path -o ~/projects/stuttgart-things \
   -t native-vm-labda-vsphere -p name=my-vm -p use_case=dev -p size=large --create-pr
+
+# ... and merge it once its checks are green (MERGE = BAU: this builds the VM)
+claims render --non-interactive --layout source-path -o ~/projects/stuttgart-things \
+  -t native-vm-labda-vsphere -p name=my-vm -p use_case=dev -p size=large --create-pr --merge
 ```
 
 Start from an up-to-date `main`: the branch is created from the current HEAD.
@@ -472,6 +477,7 @@ claims delete --xr
 | `--create-pr` | Commit, push `delete-claim/<name>` and open the PR (needs `GIT_USER`/`GIT_TOKEN`) |
 | `--git-repo-url` | Work on a fresh clone instead of the local checkout |
 | `--dry-run` | Show file, runs, kustomization entries, branch and title |
+| `--merge` | With `--create-pr`: wait for the PR's checks, then squash-merge it (see [merge](#merge-finish-an-order-change-or-deletion-pr)). Merging starts the deletion |
 
 Without `--create-pr` the files are only removed locally. `--git-branch` may only name `delete-claim/...`. In a local checkout you must be on `main` (the PR base): the gate accepts nothing but the claim's removal on top of it.
 
@@ -518,10 +524,42 @@ claims change dev7-vm --run-id fix-docker                     # a chosen id
 | `--reason`, `--requested-by` | Shown in the PR body. `--requested-by` defaults to the git user, then the token's GitHub login |
 | `--repo`, `--ref` | Fleet repository (default: the checkout's; without one `$CLAIMS_GITHUB_REPO` or `stuttgart-things/stuttgart-things`) and the branch the workflow runs on and the claim is read at (default `main`) |
 | `--dry-run`, `--no-wait` | Show the inputs only; or start the workflow and return without waiting |
+| `--merge` | Wait for the PR's checks, then squash-merge it (see [merge](#merge-finish-an-order-change-or-deletion-pr)); not with `--no-wait`. A runID change deletes the previous PipelineRun's logs on merge |
 
 When the workflow refuses the change, for example with an unknown size, a size the VM already has, or a kind it does not resize, claims prints the workflow's `::error::` lines (the failed job's annotations).
 
 claims talks to the GitHub API directly (claims#108): the token (see below) needs permission to run workflows (`actions: write`) and to read the repository. The `gh` CLI is not required. Outside a checkout, and in a checkout whose `origin` is not on GitHub, the workflow runs in `--repo`, `$CLAIMS_GITHUB_REPO` or `stuttgart-things/stuttgart-things`.
+
+### merge: finish an order, change or deletion PR
+
+`render --create-pr`, `change` and `delete --create-pr` open a PR and stop. `claims merge` finishes it (claims#113): it waits for the checks, squash-merges the PR and deletes its branch.
+
+```bash
+claims merge dev7 --dry-run                     # show the PR, its files and checks
+claims merge vm-dev7 --wait                     # wait for the checks, ask, merge
+claims merge delete-claim/dev7-vm --wait --yes  # no question (CI)
+claims merge 4442                               # by number, or by URL
+```
+
+The argument can be one of these:
+- a PR number or URL
+- a branch: `vm-<name>`, `change-claim/<name>`, `delete-claim/<name>` or `claim-<template>-<name>`
+- a name, which claims looks up as `vm-<name>`, `change-claim/<name>` and `delete-claim/<name>`
+
+A VM's XR name `<name>-vm` finds its order `vm-<name>` too. When a name matches several open PRs, claims lists them; name one by number or branch then.
+
+claims shows the PR's title, branch, labels, files, the required checks and the state of the checks. Then it asks, repeating what the merge does: **MERGE = BAU** builds the VM, a `delete-claim` PR deletes the object, a `change-claim` PR applies the change. `--yes` skips the question; without a terminal `--yes` is required.
+
+**Checks.** These are the base branch's required status checks (branch protection and rulesets). When the branch requires none, every check on the PR counts. The fleet repository's `main` has no branch protection today, so every check counts there. A failed check stops the merge. Without `--wait`, a check that still runs stops it too. `--wait` waits for the checks, up to `--timeout` (default 30m), and stops at the first failure. When the branch moves on while claims waits, claims waits for the checks of the new head. The merge itself is pinned to the head whose checks claims saw.
+
+**Guard rails.** The merge is the human approval of an order, and claims does not weaken it:
+- claims only merges PRs on its own branches (above), from the repository itself (no forks), into the default branch. Arbitrary PRs are refused.
+- claims never bypasses branch protection. It merges only when GitHub reports the PR mergeable (`mergeable_state` `clean`, `unstable` or `has_hooks`). A `blocked` PR (a review or a required check missing), a PR with conflicts and one that is behind are refused, even when the token could merge as an admin.
+- When GitHub refuses the merge, claims prints GitHub's reason. A failed check, a timeout, a refusal or a "No" at the prompt always leaves the PR open.
+
+**`--merge` on render, change and delete.** With `--merge`, `render --create-pr`, `change` and `delete --create-pr` wait for the PR they just opened and merge it in the same call. `--merge` implies `--wait`. The flag is the confirmation, so there is no question. The same checks and guard rails apply. Because claims opened that PR itself, a `--git-branch` of your own is accepted too.
+
+The token (`$GIT_TOKEN`, `$GITHUB_TOKEN`, else the `gh` CLI's login) needs permission to merge PRs and delete branches (`contents: write`, `pull_requests: write`). `--repo` defaults to the checkout's GitHub repository; outside one, it is `$CLAIMS_GITHUB_REPO` or `stuttgart-things/stuttgart-things`.
 
 ### Without a checkout of the fleet repository
 

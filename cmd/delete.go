@@ -30,6 +30,7 @@ var (
 	deletePRDescription string
 	deletePRLabels      []string
 	deletePRBase        string
+	deleteMerge         bool
 
 	// Mode flags for delete
 	deleteInteractive    bool
@@ -90,6 +91,7 @@ func init() {
 	deleteCmd.Flags().StringVar(&deletePRDescription, "pr-description", "", "PR description")
 	deleteCmd.Flags().StringSliceVar(&deletePRLabels, "pr-labels", nil, "PR labels (comma-separated)")
 	deleteCmd.Flags().StringVar(&deletePRBase, "pr-base", "main", "Base branch for PR")
+	deleteCmd.Flags().BoolVar(&deleteMerge, "merge", false, "With --create-pr: wait for the PR's checks, then squash-merge it (see claims merge)")
 
 	// Mode flags
 	deleteCmd.Flags().BoolVarP(&deleteInteractive, "interactive", "i", false, "Force interactive mode")
@@ -138,6 +140,10 @@ func runDelete(cmd *cobra.Command, args []string) {
 		}
 	}
 
+	if deleteMerge && !deleteCreatePR {
+		exitOn(fmt.Errorf("--merge merges the PR --create-pr opens: add --create-pr"))
+	}
+
 	// Build PR config
 	if deleteCreatePR || deletePRTitle != "" || deletePRDescription != "" || len(deletePRLabels) > 0 {
 		config.PRConfig = &PRConfig{
@@ -146,6 +152,7 @@ func runDelete(cmd *cobra.Command, args []string) {
 			Description: deletePRDescription,
 			Labels:      deletePRLabels,
 			BaseBranch:  deletePRBase,
+			Merge:       deleteMerge,
 		}
 	}
 

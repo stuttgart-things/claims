@@ -87,6 +87,7 @@ type PRConfig struct {
 	Description string
 	Labels      []string
 	BaseBranch  string
+	Merge       bool // --merge: wait for the checks, then squash-merge (claims#113)
 }
 
 // RenderResult holds the result of rendering a single template
