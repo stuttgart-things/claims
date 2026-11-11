@@ -41,19 +41,12 @@ func New(repoPath string, user, token string) (*GitOps, error) {
 		return nil, fmt.Errorf("opening repository: %w", err)
 	}
 
-	g := &GitOps{
+	// A token is enough: without a user name, TokenUser is sent (claims#114).
+	return &GitOps{
 		RepoPath: repoPath,
 		repo:     repo,
-	}
-
-	if user != "" && token != "" {
-		g.auth = &http.BasicAuth{
-			Username: user,
-			Password: token,
-		}
-	}
-
-	return g, nil
+		auth:     basicAuth(user, token),
+	}, nil
 }
 
 // Clone clones a repository to a temp directory
@@ -63,20 +56,13 @@ func Clone(url, user, token string) (*GitOps, string, error) {
 		return nil, "", fmt.Errorf("creating temp directory: %w", err)
 	}
 
-	var auth *http.BasicAuth
-	if user != "" && token != "" {
-		auth = &http.BasicAuth{
-			Username: user,
-			Password: token,
-		}
-	}
-
+	auth := basicAuth(user, token)
+	// An SSH URL is cloned over HTTPS with the token (claims#114).
+	cloneURL, method := transportFor(url, auth)
 	cloneOpts := &git.CloneOptions{
-		URL:      url,
+		URL:      cloneURL,
 		Progress: os.Stdout,
-	}
-	if auth != nil {
-		cloneOpts.Auth = auth
+		Auth:     method,
 	}
 
 	repo, err := git.PlainClone(tmpDir, false, cloneOpts)
@@ -172,14 +158,26 @@ func (g *GitOps) Push(remote, branch string) error {
 		return fmt.Errorf("git credentials required for push")
 	}
 
+	url, err := g.GetRemoteURL(remote)
+	if err != nil {
+		return fmt.Errorf("pushing: %w", err)
+	}
+	// An SSH remote is pushed to over HTTPS with the token: BasicAuth on an
+	// SSH transport fails with "invalid auth method" (claims#114).
+	pushURL, auth := transportFor(url, g.auth)
+
 	// Only push the specified branch, not all branches
 	refSpec := config.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", branch, branch))
 
-	err := g.repo.Push(&git.PushOptions{
+	opts := &git.PushOptions{
 		RemoteName: remote,
 		RefSpecs:   []config.RefSpec{refSpec},
-		Auth:       g.auth,
-	})
+		Auth:       auth,
+	}
+	if pushURL != url {
+		opts.RemoteURL = pushURL
+	}
+	err = g.repo.Push(opts)
 	if err != nil && err != git.NoErrAlreadyUpToDate {
 		return fmt.Errorf("pushing: %w", err)
 	}

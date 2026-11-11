@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -58,7 +59,9 @@ var renderCmd = &cobra.Command{
 }
 
 func init() {
-	renderCmd.Flags().StringVarP(&apiURL, "api-url", "a", "", "API URL (default: $CLAIM_API_URL or http://localhost:8080)")
+	renderCmd.Flags().StringVarP(&apiURL, "api-url", "a", "", "API URL (default: $CLAIM_API_URL, --endpoint, the current endpoint; no localhost default)")
+	addEndpointFlag(renderCmd)
+	addPreflightFlag(renderCmd)
 	renderCmd.Flags().StringVarP(&outputDir, "output-dir", "o", ".", "Output directory for rendered files")
 	renderCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print output without writing files")
 	renderCmd.Flags().BoolVar(&fullPreview, "full", false, "Interactive review: show the complete YAML instead of the first lines")
@@ -120,19 +123,8 @@ func validateStdout(config *RenderConfig, forceInteractive bool) error {
 
 func runRender(cmd *cobra.Command, args []string) {
 
-	// Get API URL from flag, environment, or default.
-	// CLAIM_API_URL supports colon-separated multiple endpoints (URL colons preserved).
-	if apiURL == "" {
-		apiURL = os.Getenv("CLAIM_API_URL")
-	}
-	if apiURL == "" {
-		apiURL = "http://localhost:8080"
-	}
-
-	// Build render config
+	// Build render config; the API is resolved once the mode is known.
 	config := &RenderConfig{
-		APIUrl:           apiURL,
-		APIUrls:          splitAPIURLs(apiURL),
 		Templates:        templateNames,
 		ParamsFile:       paramsFile,
 		InlineParamsRaw:  inlineParams,
@@ -207,6 +199,23 @@ func runRender(cmd *cobra.Command, args []string) {
 	}
 	config.Auth = auth
 
+	// API: -a, $CLAIM_API_URL (colon-separated list allowed), --endpoint /
+	// $CLAIM_ENDPOINT, the current endpoint; no localhost default (claims#116).
+	target, targetErr := resolveAPITarget(apiURL, config.Interactive)
+	if isAbort(targetErr) {
+		exitOn(targetErr)
+	}
+	report := &preflightReport{}
+	if !checkAPITarget(report, target, targetErr) {
+		if skipPreflight {
+			exitOn(targetErr)
+		}
+		// Collect the git problems too, so one run names every fix.
+		addRenderGitChecks(report, config)
+		exitOn(report.Err())
+	}
+	config.APIUrls = splitAPIURLs(target.URL)
+
 	var err error
 	if config.Interactive {
 		// Interactive mode — select or confirm API endpoint
@@ -219,15 +228,45 @@ func runRender(cmd *cobra.Command, args []string) {
 		}
 		exitOn(promptErr)
 		config.APIUrl = selectedURL
-		fmt.Printf("\nConnecting to API: %s\n", config.APIUrl)
+		fmt.Printf("\nConnecting to API: %s\n", targetLabel(target, config.APIUrl))
+		exitOn(renderPreflight(report, target, config))
 
 		err = runInteractive(config)
 	} else {
 		// Non-interactive: use first URL
 		config.APIUrl = config.APIUrls[0]
-		_, _ = fmt.Fprintf(config.progressOut(), "Connecting to API: %s\n\n", config.APIUrl)
+		_, _ = fmt.Fprintf(config.progressOut(), "Connecting to API: %s\n\n", targetLabel(target, config.APIUrl))
+		exitOn(renderPreflight(report, target, config))
 		err = runNonInteractive(config)
 	}
 
 	exitOn(err)
+}
+
+// targetLabel is "name (url)" when url is the endpoint's, else url.
+func targetLabel(t apiTarget, url string) string {
+	if t.Name != "" && url == t.URL {
+		return t.String()
+	}
+	return url
+}
+
+// renderPreflight checks the API render will talk to and, when git flags
+// are set, the git/GitHub side -- before anything is rendered or written
+// (claims#114).
+func renderPreflight(report *preflightReport, target apiTarget, config *RenderConfig) error {
+	if skipPreflight {
+		return nil
+	}
+	checkAPI(context.Background(), report, target, config.APIUrl, config.Auth)
+	addRenderGitChecks(report, config)
+	return finishPreflight(report)
+}
+
+// addRenderGitChecks adds the git checks for --git-*/--create-pr.
+func addRenderGitChecks(report *preflightReport, config *RenderConfig) {
+	if config.GitConfig == nil || config.DryRun || config.Stdout {
+		return
+	}
+	checkGit(context.Background(), report, gitPlanFor(config.GitConfig, config.PRConfig, config.OutputDir))
 }

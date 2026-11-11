@@ -35,12 +35,16 @@ tokens are cached per API URL (~/.config/claims/credentials.json, or
 $` + apiauth.EnvCredentialsFile + `). render and encrypt send the cached token
 to that API URL and refresh it when it expires.
 
-Issuer and client ID come from --issuer/--client-id, $` + apiauth.EnvLoginIssuer + `/
-$` + apiauth.EnvLoginClientID + `, or the previous login for the same API URL.
+The API URL is -a/--api-url, $CLAIM_API_URL, --endpoint/$CLAIM_ENDPOINT or the
+current endpoint (claims endpoint). Issuer and client ID come from
+--issuer/--client-id, $` + apiauth.EnvLoginIssuer + `/$` + apiauth.EnvLoginClientID + `, the endpoint
+(claims endpoint add --issuer --client-id), or the previous login for the
+same API URL.
 
 A token given with --api-token/$` + apiauth.EnvToken + ` or OIDC client credentials
 ($CLAIM_API_OIDC_*) wins over the cached login.`,
-	Example: `  claims login --api-url https://claims.example.com/claims \
+	Example: `  claims login --endpoint labda
+  claims login --api-url https://claims.example.com/claims \
     --issuer https://zitadel.example.com --client-id 123456789@claims
   claims whoami --api-url https://claims.example.com/claims`,
 	Args: cobra.NoArgs,
@@ -75,7 +79,8 @@ $` + apiauth.EnvToken + `, then OIDC client credentials, then the cached login.`
 
 func init() {
 	for _, c := range []*cobra.Command{loginCmd, logoutCmd, whoamiCmd} {
-		c.Flags().StringVarP(&loginAPIURL, "api-url", "a", "", "API URL the login is for (default: $CLAIM_API_URL or http://localhost:8080)")
+		c.Flags().StringVarP(&loginAPIURL, "api-url", "a", "", "API URL the login is for (default: $CLAIM_API_URL, --endpoint, the current endpoint)")
+		addEndpointFlag(c)
 	}
 	f := loginCmd.Flags()
 	f.StringVar(&loginFlags.Issuer, "issuer", "", "OIDC issuer, e.g. the lab ZITADEL (or $"+apiauth.EnvLoginIssuer+")")
@@ -88,26 +93,33 @@ func init() {
 	rootCmd.AddCommand(loginCmd, logoutCmd, whoamiCmd)
 }
 
-// singleAPIURL resolves the API URL for login/logout/whoami: the flag, else
-// $CLAIM_API_URL (which must then name exactly one endpoint), else the
-// render default.
-func singleAPIURL(flag string) (string, error) {
-	if flag != "" {
-		return apiauth.NormalizeAPIURL(flag), nil
+// singleAPIURL resolves the API for login/logout/whoami like render does
+// (-a, $CLAIM_API_URL, --endpoint/$CLAIM_ENDPOINT, the current endpoint, the
+// picker on a terminal); it must name exactly one URL. There is no localhost
+// default (claims#116).
+func singleAPIURL(flag string) (apiTarget, error) {
+	t, err := resolveAPITarget(flag, isTTY(os.Stdin))
+	if err != nil {
+		return apiTarget{}, err
 	}
-	env := os.Getenv("CLAIM_API_URL")
-	if env == "" {
-		return "http://localhost:8080", nil
-	}
-	urls := splitAPIURLs(env)
+	urls := splitAPIURLs(t.URL)
 	if len(urls) > 1 {
-		return "", fmt.Errorf("CLAIM_API_URL lists %d endpoints (%s); pick one with --api-url", len(urls), strings.Join(urls, ", "))
+		return apiTarget{}, fmt.Errorf("%s lists %d endpoints (%s); pick one with --api-url or --endpoint", t.Source, len(urls), strings.Join(urls, ", "))
 	}
-	return apiauth.NormalizeAPIURL(urls[0]), nil
+	t.URL = apiauth.NormalizeAPIURL(urls[0])
+	return t, nil
+}
+
+// loginConfigFor is the login settings for t: flags, then the environment,
+// then the endpoint's issuer/client-id/ca-file (runLogin falls back to the
+// previous login last), so `claims login --endpoint labda` needs no flags.
+func loginConfigFor(t apiTarget) apiauth.LoginConfig {
+	ep := apiauth.LoginConfig{Issuer: t.Endpoint.Issuer, ClientID: t.Endpoint.ClientID, CAFile: t.Endpoint.CAFile}
+	return loginFlags.Merge(apiauth.LoginConfigFromEnv()).Merge(ep)
 }
 
 func runLoginCmd(ctx context.Context, out io.Writer) error {
-	apiURL, err := singleAPIURL(loginAPIURL)
+	target, err := singleAPIURL(loginAPIURL)
 	if err != nil {
 		return err
 	}
@@ -120,7 +132,7 @@ func runLoginCmd(ctx context.Context, out io.Writer) error {
 	}
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
-	return runLogin(ctx, out, apiURL, loginFlags, store)
+	return runLogin(ctx, out, target.URL, loginConfigFor(target), store)
 }
 
 // runLogin performs the device flow for apiURL and caches the result.
@@ -189,11 +201,11 @@ func runLogoutCmd(out io.Writer) error {
 		}
 		return nil
 	}
-	apiURL, err := singleAPIURL(loginAPIURL)
+	target, err := singleAPIURL(loginAPIURL)
 	if err != nil {
 		return err
 	}
-	return runLogout(out, apiURL, store)
+	return runLogout(out, target.URL, store)
 }
 
 func runLogout(out io.Writer, apiURL string, store *apiauth.Store) error {
@@ -210,7 +222,7 @@ func runLogout(out io.Writer, apiURL string, store *apiauth.Store) error {
 }
 
 func runWhoamiCmd(ctx context.Context, out io.Writer) error {
-	apiURL, err := singleAPIURL(loginAPIURL)
+	target, err := singleAPIURL(loginAPIURL)
 	if err != nil {
 		return err
 	}
@@ -221,7 +233,10 @@ func runWhoamiCmd(ctx context.Context, out io.Writer) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return runWhoami(ctx, out, apiURL, apiAuthFlags.Merge(apiauth.FromEnv()), store)
+	if target.Name != "" {
+		_, _ = fmt.Fprintf(out, "Endpoint:   %s\n", target.Name)
+	}
+	return runWhoami(ctx, out, target.URL, apiAuthFlags.Merge(apiauth.FromEnv()), store)
 }
 
 // runWhoami shows the identity behind the token claims would send to apiURL.

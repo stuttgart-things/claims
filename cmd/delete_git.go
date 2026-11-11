@@ -31,6 +31,8 @@ func executeDeleteGitOperations(result *DeleteResult, config *DeleteConfig, repo
 		return err
 	}
 
+	prevBranch := currentBranch(g)
+
 	// Create branch
 	branchName := config.GitConfig.Branch
 	if branchName == "" {
@@ -103,14 +105,14 @@ func executeDeleteGitOperations(result *DeleteResult, config *DeleteConfig, repo
 
 		fmt.Printf("Pushing to %s...\n", remote)
 		if err := g.Push(remote, branchName); err != nil {
-			return err
+			return pushFailed(err, g, remote, branchName, prevBranch, prBaseOf(config.PRConfig), false)
 		}
 		fmt.Println(successStyle.Render("Pushed successfully"))
 
 		// Create PR
 		if config.PRConfig != nil && config.PRConfig.Create {
 			if err := executeDeletePRCreation(result, config, repoRoot, branchName); err != nil {
-				return fmt.Errorf("creating pull request: %w", err)
+				return prFailed(err, branchName, prBaseOf(config.PRConfig))
 			}
 		}
 	}
@@ -156,7 +158,7 @@ func executeDeletePRCreation(result *DeleteResult, config *DeleteConfig, repoPat
 
 	fmt.Println(successStyle.Render(fmt.Sprintf("Created PR: %s", pr.URL)))
 	if config.PRConfig.Merge {
-		return mergeCreatedPR(pr.URL, config.GitConfig.token())
+		return mergeStep(mergeCreatedPR(pr.URL, config.GitConfig.token()))
 	}
 	return nil
 }

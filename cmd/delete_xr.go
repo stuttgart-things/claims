@@ -186,6 +186,7 @@ func runDeleteXR(config *DeleteConfig, pick func(repoRoot string, config *Delete
 }
 
 func pushXRDeletion(g *gitops.GitOps, repoRoot string, r *xrdelete.Removal, conv xrdelete.Convention, config *DeleteConfig, user string) error {
+	prevBranch := currentBranch(g)
 	fmt.Printf("Creating branch: %s\n", conv.Branch)
 	if err := g.CreateBranch(conv.Branch); err != nil {
 		return err
@@ -218,7 +219,7 @@ func pushXRDeletion(g *gitops.GitOps, repoRoot string, r *xrdelete.Removal, conv
 	}
 	fmt.Printf("Pushing %s to %s...\n", conv.Branch, remote)
 	if err := g.Push(remote, conv.Branch); err != nil {
-		return err
+		return pushFailed(err, g, remote, conv.Branch, prevBranch, prBaseOf(config.PRConfig), config.RepoURL != "")
 	}
 	fmt.Println(successStyle.Render("Pushed successfully"))
 
@@ -245,7 +246,7 @@ func pushXRDeletion(g *gitops.GitOps, repoRoot string, r *xrdelete.Removal, conv
 	fmt.Println("Creating pull request...")
 	res, err := gitops.CreatePR(pr, g.RepoPath)
 	if err != nil {
-		return fmt.Errorf("creating pull request: %w", err)
+		return prFailed(err, conv.Branch, pr.BaseBranch)
 	}
 	fmt.Println(successStyle.Render(fmt.Sprintf("Created PR: %s", res.URL)))
 	fmt.Println("pr-claim-delete.yaml checks it; after the merge delete-claim-xr.yaml deletes the object.")

@@ -8,6 +8,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/stuttgart-things/claims/internal/apiauth"
+	"github.com/stuttgart-things/claims/internal/endpoint"
 	"github.com/stuttgart-things/claims/internal/ghclient"
 )
 
@@ -20,6 +22,11 @@ func TestMain(m *testing.M) {
 	ghclient.GHAuthToken = func() (string, error) { return "", errors.New("gh disabled in tests") }
 	// Requests that a test does not point at its own server go nowhere.
 	_ = os.Setenv(ghclient.EnvAPIURL, "http://127.0.0.1:1/")
+	// Never the developer's endpoints or logins (claims#116).
+	if dir, err := os.MkdirTemp("", "claims-test-config-*"); err == nil {
+		_ = os.Setenv(endpoint.EnvConfigFile, filepath.Join(dir, "config.yaml"))
+		_ = os.Setenv(apiauth.EnvCredentialsFile, filepath.Join(dir, "credentials.json"))
+	}
 	os.Exit(m.Run())
 }
 

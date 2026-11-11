@@ -1,10 +1,37 @@
 package gitops_test
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/stuttgart-things/claims/internal/ghclient"
 	"github.com/stuttgart-things/claims/internal/gitops"
 )
+
+// noGH makes the gh CLI fallback find no login.
+func noGH(t *testing.T) {
+	t.Helper()
+	prev := ghclient.GHAuthToken
+	ghclient.GHAuthToken = func() (string, error) { return "", errors.New("no gh in tests") }
+	t.Cleanup(func() { ghclient.GHAuthToken = prev })
+}
+
+// The gh CLI's login is the last fallback for the token, and a token alone
+// is enough (claims#114: "git credentials required" although gh was logged in).
+func TestResolveCredentialsGHFallback(t *testing.T) {
+	t.Setenv("GIT_USER", "")
+	t.Setenv("GIT_TOKEN", "")
+	t.Setenv("GITHUB_USER", "")
+	t.Setenv("GITHUB_TOKEN", "")
+	prev := ghclient.GHAuthToken
+	ghclient.GHAuthToken = func() (string, error) { return "gh-token", nil }
+	t.Cleanup(func() { ghclient.GHAuthToken = prev })
+
+	user, token, err := gitops.ResolveCredentials("", "")
+	if err != nil || user != "" || token != "gh-token" {
+		t.Errorf("got %q %q %v", user, token, err)
+	}
+}
 
 func TestResolveCredentials(t *testing.T) {
 	tests := []struct {
@@ -57,10 +84,10 @@ func TestResolveCredentials(t *testing.T) {
 			wantErr:   false,
 		},
 		{
-			name:    "missing user",
-			user:    "",
-			token:   "flagtoken",
-			wantErr: true,
+			name:      "missing user is fine with a token",
+			user:      "",
+			token:     "flagtoken",
+			wantToken: "flagtoken",
 		},
 		{
 			name:    "missing token",
@@ -85,6 +112,7 @@ func TestResolveCredentials(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Isolate from host environment; t.Setenv restores after each subtest
+			noGH(t)
 			t.Setenv("GIT_USER", "")
 			t.Setenv("GIT_TOKEN", "")
 			t.Setenv("GITHUB_USER", "")

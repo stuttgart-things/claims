@@ -27,6 +27,7 @@ claims render --api-url <api>
 | Flag | Environment | Description |
 |------|-------------|-------------|
 | `--api-url` / `-a` | `CLAIM_API_URL` (exactly one endpoint) | API URL the login is for; key of the cached login |
+| `--endpoint` | `CLAIM_ENDPOINT` | Named endpoint ([11-endpoints-preflight.md](11-endpoints-preflight.md)); its `issuer`/`client-id`/`ca-file` fill in for missing flags |
 | `--issuer` | `CLAIM_API_LOGIN_ISSUER` | ZITADEL issuer URL |
 | `--client-id` | `CLAIM_API_LOGIN_CLIENT_ID` | Client ID of the native application |
 | `--scope` | `CLAIM_API_LOGIN_SCOPE` | Scopes (default `openid profile email offline_access`) |

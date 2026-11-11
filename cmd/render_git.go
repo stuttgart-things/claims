@@ -59,6 +59,8 @@ func executeGitOperations(results []RenderResult, config *RenderConfig) error {
 		}
 	}
 
+	prevBranch := currentBranch(g)
+
 	// Create branch if requested
 	if config.GitConfig.CreateBranch && config.GitConfig.Branch != "" {
 		fmt.Printf("Creating branch: %s\n", config.GitConfig.Branch)
@@ -134,7 +136,7 @@ func executeGitOperations(results []RenderResult, config *RenderConfig) error {
 
 		fmt.Printf("Pushing to %s...\n", remote)
 		if err := g.Push(remote, branch); err != nil {
-			return err
+			return pushFailed(err, g, remote, branch, prevBranch, prBaseOf(config.PRConfig), config.GitConfig.RepoURL != "")
 		}
 		fmt.Println(successStyle.Render("Pushed successfully"))
 
@@ -142,7 +144,7 @@ func executeGitOperations(results []RenderResult, config *RenderConfig) error {
 		if config.PRConfig != nil && config.PRConfig.Create {
 			repoPath := g.RepoPath
 			if err := executePRCreation(results, config, repoPath); err != nil {
-				return fmt.Errorf("creating pull request: %w", err)
+				return prFailed(err, branch, prBaseOf(config.PRConfig))
 			}
 		}
 	}

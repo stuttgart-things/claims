@@ -40,6 +40,8 @@ func executeEncryptGitOperations(result *EncryptResult, config *EncryptConfig) e
 		return err
 	}
 
+	prevBranch := currentBranch(g)
+
 	// Create branch
 	branchName := config.GitConfig.Branch
 	if branchName == "" {
@@ -95,14 +97,14 @@ func executeEncryptGitOperations(result *EncryptResult, config *EncryptConfig) e
 
 		fmt.Printf("Pushing to %s...\n", remote)
 		if err := g.Push(remote, branchName); err != nil {
-			return err
+			return pushFailed(err, g, remote, branchName, prevBranch, prBaseOf(config.PRConfig), false)
 		}
 		fmt.Println(successStyle.Render("Pushed successfully"))
 
 		// Create PR
 		if config.PRConfig != nil && config.PRConfig.Create {
 			if err := executeEncryptPRCreation(result, config, repoRoot, branchName); err != nil {
-				return fmt.Errorf("creating pull request: %w", err)
+				return prFailed(err, branchName, prBaseOf(config.PRConfig))
 			}
 		}
 	}
