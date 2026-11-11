@@ -46,6 +46,7 @@ var (
 	prDescription string
 	prLabels      []string
 	prBase        string
+	prMerge       bool
 )
 
 var renderCmd = &cobra.Command{
@@ -94,6 +95,7 @@ func init() {
 	renderCmd.Flags().StringVar(&prDescription, "pr-description", "", "PR description")
 	renderCmd.Flags().StringSliceVar(&prLabels, "pr-labels", nil, "PR labels (comma-separated)")
 	renderCmd.Flags().StringVar(&prBase, "pr-base", "main", "Base branch for PR")
+	renderCmd.Flags().BoolVar(&prMerge, "merge", false, "With --create-pr: wait for the PR's checks, then squash-merge it (see claims merge)")
 
 	addAPIAuthFlags(renderCmd)
 
@@ -162,6 +164,10 @@ func runRender(cmd *cobra.Command, args []string) {
 		}
 	}
 
+	if prMerge && !createPR {
+		exitOn(fmt.Errorf("--merge merges the PR --create-pr opens: add --create-pr"))
+	}
+
 	// Build PR config if PR flags are set
 	if createPR || prTitle != "" || prDescription != "" || len(prLabels) > 0 {
 		config.PRConfig = &PRConfig{
@@ -170,6 +176,7 @@ func runRender(cmd *cobra.Command, args []string) {
 			Description: prDescription,
 			Labels:      prLabels,
 			BaseBranch:  prBase,
+			Merge:       prMerge,
 		}
 	}
 

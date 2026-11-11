@@ -249,6 +249,9 @@ func pushXRDeletion(g *gitops.GitOps, repoRoot string, r *xrdelete.Removal, conv
 	}
 	fmt.Println(successStyle.Render(fmt.Sprintf("Created PR: %s", res.URL)))
 	fmt.Println("pr-claim-delete.yaml checks it; after the merge delete-claim-xr.yaml deletes the object.")
+	if config.PRConfig.Merge {
+		return mergeCreatedPR(res.URL, config.GitConfig.token())
+	}
 	return nil
 }
 

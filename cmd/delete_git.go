@@ -155,6 +155,9 @@ func executeDeletePRCreation(result *DeleteResult, config *DeleteConfig, repoPat
 	}
 
 	fmt.Println(successStyle.Render(fmt.Sprintf("Created PR: %s", pr.URL)))
+	if config.PRConfig.Merge {
+		return mergeCreatedPR(pr.URL, config.GitConfig.token())
+	}
 	return nil
 }
 

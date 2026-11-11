@@ -78,6 +78,7 @@ type ChangeConfig struct {
 	Ref    string // branch the workflow runs on
 	DryRun bool
 	NoWait bool
+	Merge  bool // wait for the PR's checks, then squash-merge it (claims#113)
 }
 
 var changeFlags ChangeConfig
@@ -154,6 +155,7 @@ func init() {
 	f.StringVar(&changeFlags.Ref, "ref", "main", "Branch the workflow runs on")
 	f.BoolVar(&changeFlags.DryRun, "dry-run", false, "Print the workflow inputs without starting it")
 	f.BoolVar(&changeFlags.NoWait, "no-wait", false, "Start the workflow and return without waiting for the PR")
+	f.BoolVar(&changeFlags.Merge, "merge", false, "Wait for the PR's checks, then squash-merge it (see claims merge)")
 	f.BoolVarP(&changeInteractive, "interactive", "i", false, "Pick the VM and the change interactively")
 	rootCmd.AddCommand(changeCmd)
 }
@@ -231,6 +233,12 @@ func runChange(cfg *ChangeConfig, interactive bool) error {
 			return err
 		}
 	}
+	if cfg.Merge && cfg.NoWait {
+		return errors.New("--merge waits for the PR: drop --no-wait")
+	}
+	if cfg.Merge && cfg.isRunID() {
+		return errors.New("--merge does not go with --retry/--run-id: merging deletes the previous PipelineRun and its logs; read them first, then merge the PR with `claims merge change-claim/<name>`")
+	}
 	if err := resolveChange(cfg); err != nil {
 		return err
 	}
@@ -297,9 +305,12 @@ func runChange(cfg *ChangeConfig, interactive bool) error {
 	if cfg.isRunID() {
 		fmt.Println("pr-claim-change.yaml checks it; merging it starts the new PipelineRun.")
 		fmt.Println(warnStyle.Render(runIDWarning(cfg)))
-		return nil
+	} else {
+		fmt.Println("pr-claim-change.yaml checks it; merging it applies the new size.")
 	}
-	fmt.Println("pr-claim-change.yaml checks it; merging it applies the new size.")
+	if cfg.Merge {
+		return mergeCreatedPR(url, "")
+	}
 	return nil
 }
 

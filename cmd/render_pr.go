@@ -64,6 +64,9 @@ func executePRCreation(results []RenderResult, config *RenderConfig, repoPath st
 	}
 
 	fmt.Println(successStyle.Render(fmt.Sprintf("Created PR: %s", pr.URL)))
+	if config.PRConfig.Merge {
+		return mergeCreatedPR(pr.URL, config.GitConfig.token())
+	}
 	return nil
 }
 

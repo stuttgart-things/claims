@@ -346,6 +346,9 @@ func runSourcePathLayout(orders []layoutOrder, config *RenderConfig) error {
 		return fmt.Errorf("creating pull request: %w", err)
 	}
 	fmt.Println(successStyle.Render(fmt.Sprintf("Created PR: %s", res.URL)))
+	if config.PRConfig.Merge {
+		return mergeCreatedPR(res.URL, config.GitConfig.token())
+	}
 	return nil
 }
 
