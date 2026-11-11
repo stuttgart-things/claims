@@ -313,3 +313,68 @@ func TestNonAuthErrorHasNoHint(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+func TestRenderTemplateParameterErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   string
+		fields map[string]string
+	}{
+		{
+			name:   "400 with field errors",
+			status: http.StatusBadRequest,
+			body:   `{"error":"invalid parameters","fields":{"size":"use_case dev allows large or xlarge, got small","name":"is required"}}`,
+			want:   "API returned 400: invalid parameters\n  name: is required\n  size: use_case dev allows large or xlarge, got small",
+			fields: map[string]string{"size": "use_case dev allows large or xlarge, got small", "name": "is required"},
+		},
+		{
+			name:   "400 KCL assert",
+			status: http.StatusBadRequest,
+			body:   `{"error":"use_case dev needs size large or xlarge, got small"}`,
+			want:   "API returned 400: use_case dev needs size large or xlarge, got small",
+		},
+		{
+			name:   "500 with ANSI codes (older APIs)",
+			status: http.StatusInternalServerError,
+			body:   `{"error":"rendering failed: exit status 1\nStderr: EvaluationError\n  \u001b[1;38;5;12m-->\u001b[0m /tmp/main.k:89:1   \n\u001b[1;38;5;9mboom\u001b[0m\n\n"}`,
+			want:   "API returned 500: rendering failed: exit status 1\nStderr: EvaluationError\n  --> /tmp/main.k:89:1\nboom",
+		},
+		{
+			name:   "plain text body",
+			status: http.StatusBadGateway,
+			body:   "bad gateway\n",
+			want:   "API returned 502: bad gateway",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer srv.Close()
+
+			_, err := NewClient(srv.URL).RenderTemplate("vm", map[string]interface{}{})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if err.Error() != tt.want {
+				t.Errorf("error =\n%s\nwant\n%s", err, tt.want)
+			}
+			apiErr, ok := err.(*APIError)
+			if !ok {
+				t.Fatalf("error is %T, want *APIError", err)
+			}
+			if apiErr.Status != tt.status || len(apiErr.Fields) != len(tt.fields) {
+				t.Errorf("APIError = %+v", apiErr)
+			}
+			for k, v := range tt.fields {
+				if apiErr.Fields[k] != v {
+					t.Errorf("Fields[%s] = %q, want %q", k, apiErr.Fields[k], v)
+				}
+			}
+		})
+	}
+}

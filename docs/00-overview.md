@@ -88,3 +88,4 @@ internal/
 9. [09-encrypt.md](09-encrypt.md) - SOPS-encrypted Kubernetes Secrets
 10. [10-login.md](10-login.md) - Interactive login (`claims login`)
 11. [11-endpoints-preflight.md](11-endpoints-preflight.md) - Named endpoints, preflight checks, `claims doctor`
+12. [12-conditional-form.md](12-conditional-form.md) - Parameter conditions (`showWhen`, `enumWhen`) and API field errors
