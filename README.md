@@ -707,7 +707,15 @@ The `claims render` command follows an interactive workflow:
 
 1. **API URL** - Confirm or change the API endpoint
 2. **Template Selection** - Multi-select templates to render (space to select, enter to confirm)
-3. **Parameter Input** - Fill in parameters for each selected template
+3. **Parameter Input** - Fill in parameters for each selected template, in
+   the template's order. With parameter conditions (claim-machinery-api#135)
+   the form only asks what applies: a parameter with `showWhen` appears only
+   when the earlier answers match (its value is not sent otherwise), a select
+   with `enumWhen` offers only the values the earlier answers allow (keeping
+   the current one if allowed, else the first allowed), and every field is
+   checked (required, enum, pattern) before the form can be submitted. Field
+   errors of an API `400` are shown next to the fields when you edit. See
+   [docs/12-conditional-form.md](docs/12-conditional-form.md).
 4. **Render** - Call the API to generate YAML
 5. **Review** - Preview rendered resources with options to:
    - Continue to save
@@ -836,6 +844,7 @@ task test-gitops
 │   ├── root.go                # Root command setup
 │   ├── render.go              # Render command and flags
 │   ├── render_interactive.go  # Interactive form-based rendering
+│   ├── render_form.go         # Parameter form: showWhen/enumWhen, validation, terminal sizing
 │   ├── render_noninteractive.go # Non-interactive mode for CI/CD
 │   ├── render_review.go       # Review/preview step before saving
 │   ├── render_output.go       # File output logic (separate/single file, dry-run)

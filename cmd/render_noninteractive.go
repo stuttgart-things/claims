@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
+	"github.com/stuttgart-things/claims/internal/conditions"
 	"github.com/stuttgart-things/claims/internal/params"
 	"github.com/stuttgart-things/claims/internal/templates"
 )
@@ -79,12 +81,17 @@ func runNonInteractive(config *RenderConfig) error {
 	// Render all templates
 	progress := config.progressOut()
 	var results []RenderResult
-	for _, tp := range templateParams {
+	for i, tp := range templateParams {
 		_, _ = fmt.Fprintf(progress, "Rendering %s...\n", tp.Name)
+
+		// Values of parameters whose showWhen does not match are not sent
+		// (the API would ignore them; claims#115).
+		tp.Parameters = dropInactive(progress, templateLookup[tp.Name], tp.Parameters)
+		templateParams[i].Parameters = tp.Parameters
 
 		content, err := client.RenderTemplate(tp.Name, tp.Parameters)
 		if err != nil {
-			_, _ = fmt.Fprintf(progress, "  ERROR: %v\n", err)
+			_, _ = fmt.Fprintf(progress, "  ERROR: %s\n", indentLines(err.Error(), "    "))
 			results = append(results, RenderResult{
 				TemplateName: tp.Name,
 				Error:        err,
@@ -243,4 +250,26 @@ func writeStdout(out io.Writer, results []RenderResult, templateParams []params.
 		}
 	}
 	return nil
+}
+
+// dropInactive returns params without the values of tmpl's parameters
+// whose showWhen does not match, and notes each dropped one on progress.
+func dropInactive(progress io.Writer, tmpl *templates.ClaimTemplate, params map[string]any) map[string]any {
+	if tmpl == nil || !conditions.HasConditions(tmpl.Spec.Parameters) {
+		return params
+	}
+	out, dropped := conditions.Drop(tmpl.Spec.Parameters, params)
+	for _, name := range dropped {
+		for _, p := range tmpl.Spec.Parameters {
+			if p.Name == name {
+				_, _ = fmt.Fprintf(progress, "  Not sending %s: only applies when %s\n", name, conditions.ShowWhenText(p))
+			}
+		}
+	}
+	return out
+}
+
+// indentLines indents every line of s after the first by prefix.
+func indentLines(s, prefix string) string {
+	return strings.ReplaceAll(s, "\n", "\n"+prefix)
 }

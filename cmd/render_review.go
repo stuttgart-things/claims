@@ -61,10 +61,11 @@ func ReviewResults(results []RenderResult, full bool) (ReviewAction, int, error)
 	truncated := false
 	for _, r := range results {
 		if r.Error != nil {
-			fmt.Printf("%s %s (ERROR: %v)\n\n",
+			// One line per field error of an API 400 (claims#115).
+			fmt.Printf("%s %s: ERROR\n%s\n\n",
 				errorStyle.Render("✗"),
 				r.TemplateName,
-				r.Error,
+				styleLines(errorStyle, "  "+indentLines(r.Error.Error(), "  ")),
 			)
 			continue
 		}
@@ -82,17 +83,15 @@ func ReviewResults(results []RenderResult, full bool) (ReviewAction, int, error)
 		fmt.Println()
 	}
 
-	// If no successful renders, only allow cancel
-	if successCount == 0 {
-		fmt.Println(errorStyle.Render("No successful renders to save."))
-		return ReviewActionCancel, 0, nil
-	}
-
-	// Action selection
+	// Action selection; without a successful render only edit (the failed
+	// ones, with the API's field errors next to their fields) or cancel.
 	var action string
 
-	options := []huh.Option[string]{
-		huh.NewOption("Continue to save", "continue"),
+	var options []huh.Option[string]
+	if successCount == 0 {
+		fmt.Println(errorStyle.Render("No successful renders to save."))
+	} else {
+		options = append(options, huh.NewOption("Continue to save", "continue"))
 	}
 	if truncated {
 		options = append(options, huh.NewOption("Show full YAML", string(ReviewActionFull)))
@@ -129,7 +128,7 @@ func ReviewResults(results []RenderResult, full bool) (ReviewAction, int, error)
 
 // selectTemplateToEdit displays a form to select which template to edit
 func selectTemplateToEdit(results []RenderResult) (int, error) {
-	// Build options only from successful renders
+	// Every template can be edited, a failed one to fix its parameters
 	type indexedOption struct {
 		index int
 		label string
@@ -137,10 +136,11 @@ func selectTemplateToEdit(results []RenderResult) (int, error) {
 	var validOptions []indexedOption
 
 	for i, r := range results {
-		if r.Error == nil {
-			label := fmt.Sprintf("%s (%s)", r.TemplateName, r.ResourceName)
-			validOptions = append(validOptions, indexedOption{index: i, label: label})
+		label := fmt.Sprintf("%s (%s)", r.TemplateName, r.ResourceName)
+		if r.Error != nil {
+			label = r.TemplateName + " (failed)"
 		}
+		validOptions = append(validOptions, indexedOption{index: i, label: label})
 	}
 
 	if len(validOptions) == 0 {

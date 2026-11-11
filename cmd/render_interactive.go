@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -185,7 +183,10 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			printSection(progressStyle, fmt.Sprintf("━━━ Editing: %s ━━━", tmpl.Metadata.Title))
 			fmt.Printf("%s\n\n", tmpl.Metadata.Description)
 
-			newParams, err := collectTemplateParams(tmpl)
+			// Start from the previous answers; field errors of an API 400
+			// are shown next to their fields (claims#115).
+			prev := results[editIndex]
+			newParams, err := collectTemplateParams(tmpl, prev.Params, apiFieldErrors(prev.Error))
 			if isAbort(err) {
 				fmt.Println("Edit cancelled, keeping the previous render.")
 				continue // Stay in review loop
@@ -201,6 +202,7 @@ func runInteractiveRender(client *templates.Client, config *RenderConfig) error 
 			if err != nil {
 				fmt.Println(errorStyle.Render("failed"))
 				results[editIndex].Error = err
+				results[editIndex].Params = newParams
 			} else {
 				fmt.Println(successStyle.Render("done"))
 				results[editIndex].Content = content
@@ -1096,7 +1098,7 @@ func collectAllParams(selectedNames []string, templateMap map[string]*templates.
 		fmt.Printf("%s\n\n", tmpl.Metadata.Description)
 
 		// Collect params for this template
-		params, err := collectTemplateParams(tmpl)
+		params, err := collectTemplateParams(tmpl, nil, nil)
 		if err != nil {
 			return nil, fmt.Errorf("collecting params for %s: %w", name, err)
 		}
@@ -1110,95 +1112,11 @@ func collectAllParams(selectedNames []string, templateMap map[string]*templates.
 	return allParams, nil
 }
 
-// collectTemplateParams collects parameters for a single template
-func collectTemplateParams(tmpl *templates.ClaimTemplate) (map[string]any, error) {
-	params := make(map[string]any)
-	paramValues := make(map[string]*string)
-	multiValues := make(map[string]*[]string)
-
-	// Create form fields for each parameter
-	var formGroups []*huh.Group
-	var currentFields []huh.Field
-
-	for _, p := range tmpl.Spec.Parameters {
-		isMultiselect := p.Multiselect && len(p.Enum) > 0
-
-		if isMultiselect {
-			// Parse array defaults into []string
-			defaults := parseDefaultSlice(p.Default)
-			multiValues[p.Name] = &defaults
-		} else {
-			// Initialize with default
-			defaultVal := ""
-			if p.Default != nil {
-				defaultVal = fmt.Sprintf("%v", p.Default)
-			}
-			paramValues[p.Name] = &defaultVal
-		}
-
-		// Skip hidden parameters and valueFrom parameters (resolved server-side)
-		if p.Hidden || p.ValueFrom != nil {
-			continue
-		}
-
-		var field huh.Field
-		if isMultiselect {
-			field = createMultiselectField(p, multiValues[p.Name])
-		} else {
-			field = createField(p, paramValues[p.Name])
-		}
-		if field != nil {
-			currentFields = append(currentFields, field)
-		}
-
-		// Group fields (max 5 per group)
-		if len(currentFields) >= 5 {
-			formGroups = append(formGroups, huh.NewGroup(currentFields...))
-			currentFields = nil
-		}
-	}
-
-	if len(currentFields) > 0 {
-		formGroups = append(formGroups, huh.NewGroup(currentFields...))
-	}
-
-	if len(formGroups) > 0 {
-		paramForm := huh.NewForm(formGroups...)
-		if err := paramForm.Run(); err != nil {
-			return nil, err
-		}
-	}
-
-	// Resolve values
-	for _, p := range tmpl.Spec.Parameters {
-		isMultiselect := p.Multiselect && len(p.Enum) > 0
-
-		if isMultiselect {
-			selected := *multiValues[p.Name]
-			if len(selected) > 0 {
-				// Store as []interface{} for JSON marshalling compatibility
-				vals := make([]interface{}, len(selected))
-				for i, v := range selected {
-					vals[i] = v
-				}
-				params[p.Name] = vals
-			}
-		} else {
-			strVal := *paramValues[p.Name]
-			if strVal == "" {
-				continue
-			}
-			// Handle random selection
-			if strVal == randomMarker && len(p.Enum) > 0 {
-				randomIdx := rand.Intn(len(p.Enum))
-				strVal = p.Enum[randomIdx]
-				fmt.Printf("Random selection for %s: %s\n", p.Name, strVal)
-			}
-			params[p.Name] = strVal
-		}
-	}
-
-	return params, nil
+// collectTemplateParams collects the parameters for one template with its
+// conditional form (render_form.go), starting from prev (an edit) and
+// showing fieldErrs next to their fields.
+func collectTemplateParams(tmpl *templates.ClaimTemplate, prev map[string]any, fieldErrs map[string]string) (map[string]any, error) {
+	return newParamForm(tmpl, prev).run(fieldErrs)
 }
 
 // parseDefaultSlice converts a default value into a []string.
@@ -1219,26 +1137,6 @@ func parseDefaultSlice(v interface{}) []string {
 	default:
 		return []string{fmt.Sprintf("%v", v)}
 	}
-}
-
-// createMultiselectField creates a huh.MultiSelect field for multiselect parameters
-func createMultiselectField(p templates.Parameter, value *[]string) huh.Field {
-	title := p.Title
-	if p.Required {
-		title += " *"
-	}
-
-	var options []huh.Option[string]
-	for _, e := range p.Enum {
-		enumStr := fmt.Sprintf("%v", e)
-		options = append(options, huh.NewOption(enumStr, enumStr))
-	}
-
-	return huh.NewMultiSelect[string]().
-		Title(title).
-		Description(p.Description).
-		Options(options...).
-		Value(value)
 }
 
 // renderAllTemplates renders all templates and returns results
@@ -1407,74 +1305,4 @@ func promptAPIURL(currentURL string) (string, error) {
 		return "", err
 	}
 	return apiURLInput, nil
-}
-
-// createField creates the appropriate huh field based on parameter type
-func createField(p templates.Parameter, value *string) huh.Field {
-	title := p.Title
-	if p.Required {
-		title += " *"
-	}
-
-	description := p.Description
-	if p.Pattern != "" {
-		description += fmt.Sprintf(" (pattern: %s)", p.Pattern)
-	}
-
-	// If parameter has enum values, use Select
-	if len(p.Enum) > 0 {
-		var options []huh.Option[string]
-
-		// Add Random option if allowed
-		if p.AllowRandom {
-			options = append(options, huh.NewOption(randomMarker, randomMarker))
-		}
-
-		for _, e := range p.Enum {
-			enumStr := fmt.Sprintf("%v", e)
-			options = append(options, huh.NewOption(enumStr, enumStr))
-		}
-
-		return huh.NewSelect[string]().
-			Title(title).
-			Description(description).
-			Options(options...).
-			Value(value)
-	}
-
-	// Handle different types
-	switch p.Type {
-	case "boolean":
-		return huh.NewSelect[string]().
-			Title(title).
-			Description(description).
-			Options(
-				huh.NewOption("true", "true"),
-				huh.NewOption("false", "false"),
-			).
-			Value(value)
-
-	case "integer":
-		return huh.NewInput().
-			Title(title).
-			Description(description).
-			Placeholder(fmt.Sprintf("default: %v", p.Default)).
-			Value(value).
-			Validate(func(s string) error {
-				if s == "" {
-					return nil
-				}
-				if _, err := strconv.Atoi(s); err != nil {
-					return fmt.Errorf("must be a number")
-				}
-				return nil
-			})
-
-	default: // string
-		return huh.NewInput().
-			Title(title).
-			Description(description).
-			Placeholder(fmt.Sprintf("default: %v", p.Default)).
-			Value(value)
-	}
 }

@@ -51,10 +51,22 @@ type Parameter struct {
 	Required    bool           `json:"required,omitempty"`
 	Enum        []string       `json:"enum,omitempty"`
 	Pattern     string         `json:"pattern,omitempty"`
+	MinLength   *int           `json:"minLength,omitempty"`
+	MaxLength   *int           `json:"maxLength,omitempty"`
 	Hidden      bool           `json:"hidden,omitempty"`
 	AllowRandom bool           `json:"allowRandom,omitempty"`
 	Multiselect bool           `json:"multiselect,omitempty"`
 	ValueFrom   *ValueFromSpec `json:"valueFrom,omitempty"`
+
+	// ShowWhen makes the parameter conditional (claim-machinery-api#135):
+	// it applies only when every named parameter has one of the listed
+	// values, e.g. {use_case: [dev]}. See internal/conditions.
+	ShowWhen map[string][]string `json:"showWhen,omitempty"`
+
+	// EnumWhen narrows the allowed values by another parameter's value,
+	// e.g. {use_case: {dev: [large, xlarge]}}; a value not listed leaves the
+	// enum as it is. See internal/conditions.
+	EnumWhen map[string]map[string][]string `json:"enumWhen,omitempty"`
 }
 
 // ClaimTemplateList is a list of claim templates

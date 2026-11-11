@@ -3,10 +3,12 @@ package templates
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/stuttgart-things/claims/internal/apiauth"
@@ -94,13 +96,70 @@ func (c *Client) RenderTemplate(templateName string, params map[string]interface
 	return orderResp.Rendered, nil
 }
 
+// APIError is a non-200 answer of the API. claim-machinery-api answers
+// invalid parameters with 400 {"error":"invalid parameters","fields":{…}}
+// and a failing KCL assert with 400 {"error":"<assert message>"}
+// (claim-machinery-api#135); Message and Fields hold them.
+type APIError struct {
+	Status  int
+	Message string            // the "error" of a JSON body, else the body
+	Fields  map[string]string // parameter -> what is wrong (400)
+	Hint    string            // 401/403: which auth settings to check
+}
+
+// Error renders the error readably: one line per field error, the
+// message of a JSON body without ANSI codes and escapes.
+func (e *APIError) Error() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "API returned %d: %s", e.Status, e.Message)
+	for _, name := range e.FieldNames() {
+		fmt.Fprintf(&b, "\n  %s: %s", name, e.Fields[name])
+	}
+	if e.Hint != "" {
+		b.WriteString("\n" + e.Hint)
+	}
+	return b.String()
+}
+
+// FieldNames returns the names of Fields, sorted.
+func (e *APIError) FieldNames() []string {
+	names := make([]string, 0, len(e.Fields))
+	for n := range e.Fields {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ansiRE matches ANSI escape sequences (older APIs pass KCL's colored
+// stderr through).
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+
 // statusError builds the error for a non-200 response. 401/403 responses get
-// a hint naming the auth settings (CLAIM_API_TOKEN / CLAIM_API_OIDC_*).
+// a hint naming the auth settings (CLAIM_API_TOKEN / CLAIM_API_OIDC_*) and
+// keep the body as it is.
 func statusError(resp *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-	msg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, bytes.TrimSpace(body))
-	if hint := apiauth.StatusHint(resp.StatusCode); hint != "" {
-		return fmt.Errorf("%s\n%s", msg, hint)
+	e := &APIError{
+		Status:  resp.StatusCode,
+		Message: string(bytes.TrimSpace(body)),
+		Hint:    apiauth.StatusHint(resp.StatusCode),
 	}
-	return errors.New(msg)
+	if e.Hint != "" {
+		return e
+	}
+	var parsed struct {
+		Error  string            `json:"error"`
+		Fields map[string]string `json:"fields"`
+	}
+	if json.Unmarshal(body, &parsed) == nil && parsed.Error != "" {
+		msg := ansiRE.ReplaceAllString(parsed.Error, "")
+		lines := strings.Split(msg, "\n")
+		for i, l := range lines {
+			lines[i] = strings.TrimRight(l, " \t")
+		}
+		e.Message = strings.TrimSpace(strings.Join(lines, "\n"))
+		e.Fields = parsed.Fields
+	}
+	return e
 }
