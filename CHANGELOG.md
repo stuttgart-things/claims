@@ -1,3 +1,10 @@
+# [0.25.0](https://github.com/stuttgart-things/claims/compare/v0.24.0...v0.25.0) (2026-11-11)
+
+
+### Features
+
+* **merge:** merge an order/change/delete PR from the CLI (claims merge, --merge) ([#117](https://github.com/stuttgart-things/claims/issues/117)) ([143d7df](https://github.com/stuttgart-things/claims/commit/143d7dfe197a99d7b8026725933e113358e03b4f)), closes [#113](https://github.com/stuttgart-things/claims/issues/113)
+
 # [0.24.0](https://github.com/stuttgart-things/claims/compare/v0.23.0...v0.24.0) (2026-11-07)
 
 
