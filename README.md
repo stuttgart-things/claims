@@ -524,7 +524,7 @@ claims change dev7-vm --run-id fix-docker                     # a chosen id
 | `--reason`, `--requested-by` | Shown in the PR body. `--requested-by` defaults to the git user, then the token's GitHub login |
 | `--repo`, `--ref` | Fleet repository (default: the checkout's; without one `$CLAIMS_GITHUB_REPO` or `stuttgart-things/stuttgart-things`) and the branch the workflow runs on and the claim is read at (default `main`) |
 | `--dry-run`, `--no-wait` | Show the inputs only; or start the workflow and return without waiting |
-| `--merge` | Wait for the PR's checks, then squash-merge it (see [merge](#merge-finish-an-order-change-or-deletion-pr)); not with `--no-wait`. A runID change deletes the previous PipelineRun's logs on merge |
+| `--merge` | Wait for the PR's checks, then squash-merge it (see [merge](#merge-finish-an-order-change-or-deletion-pr)); not with `--no-wait`, and not with `--retry`/`--run-id` (merging deletes the previous PipelineRun's logs: read them, then `claims merge`) |
 
 When the workflow refuses the change, for example with an unknown size, a size the VM already has, or a kind it does not resize, claims prints the workflow's `::error::` lines (the failed job's annotations).
 

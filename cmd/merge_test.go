@@ -446,3 +446,15 @@ func TestChangeMergeNeedsWait(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestChangeMergeRefusesRunID(t *testing.T) {
+	for _, cfg := range []*ChangeConfig{
+		{Name: "dev7-vm", Retry: true, Merge: true},
+		{Name: "dev7-vm", RunID: "fix-docker", Merge: true},
+	} {
+		err := runChange(cfg, false)
+		if err == nil || !strings.Contains(err.Error(), "--merge does not go with --retry/--run-id") || !strings.Contains(err.Error(), "claims merge") {
+			t.Errorf("%+v: err = %v", cfg, err)
+		}
+	}
+}

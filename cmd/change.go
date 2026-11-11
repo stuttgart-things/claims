@@ -236,6 +236,9 @@ func runChange(cfg *ChangeConfig, interactive bool) error {
 	if cfg.Merge && cfg.NoWait {
 		return errors.New("--merge waits for the PR: drop --no-wait")
 	}
+	if cfg.Merge && cfg.isRunID() {
+		return errors.New("--merge does not go with --retry/--run-id: merging deletes the previous PipelineRun and its logs; read them first, then merge the PR with `claims merge change-claim/<name>`")
+	}
 	if err := resolveChange(cfg); err != nil {
 		return err
 	}
