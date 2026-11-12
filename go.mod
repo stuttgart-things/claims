@@ -6,7 +6,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/huh v0.8.0
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/charmbracelet/x/term v0.2.1
+	github.com/charmbracelet/x/term v0.2.2
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/google/go-github/v93 v93.0.0
 	github.com/lucasb-eyer/go-colorful v1.4.1
