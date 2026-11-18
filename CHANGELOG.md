@@ -1,3 +1,10 @@
+# [0.28.0](https://github.com/stuttgart-things/claims/compare/v0.27.0...v0.28.0) (2026-11-18)
+
+
+### Features
+
+* order through machinery-order-service (claims order, orders, templates, clusters) ([#127](https://github.com/stuttgart-things/claims/issues/127)) ([33f4680](https://github.com/stuttgart-things/claims/commit/33f46800f53bd4cdd2d7606cf275ab144880b13a)), closes [#126](https://github.com/stuttgart-things/claims/issues/126) [machinery-order-service#15](https://github.com/machinery-order-service/issues/15) [machinery-order-service#15](https://github.com/machinery-order-service/issues/15) [#125](https://github.com/stuttgart-things/claims/issues/125) [claim-machinery-api#145](https://github.com/claim-machinery-api/issues/145) [machinery-order-service#15](https://github.com/machinery-order-service/issues/15) [claim-machinery-api#145](https://github.com/claim-machinery-api/issues/145) [#124](https://github.com/stuttgart-things/claims/issues/124) [#125](https://github.com/stuttgart-things/claims/issues/125)
+
 # [0.27.0](https://github.com/stuttgart-things/claims/compare/v0.26.0...v0.27.0) (2026-11-11)
 
 
