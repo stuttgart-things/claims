@@ -9,6 +9,8 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-isatty"
+
+	"github.com/stuttgart-things/claims/internal/templates"
 )
 
 // styleLines renders s line by line. lipgloss pads every line of a
@@ -70,7 +72,7 @@ func abortMessage(err error) string {
 }
 
 // exitOn ends the command: nothing on success, a short note and exit 130
-// after a user abort, the error (stderr) and exit 1 otherwise.
+// after a user abort, the error (stderr) and exitCode(err) otherwise.
 func exitOn(err error) {
 	if err == nil {
 		return
@@ -80,7 +82,40 @@ func exitOn(err error) {
 		os.Exit(exitCodeAborted)
 	}
 	printError(err)
-	os.Exit(1)
+	os.Exit(exitCode(err))
+}
+
+// Exit codes of the programmatic face (docs/adr/0001-interactive-and-programmatic.md).
+const (
+	exitCodeError    = 1
+	exitCodeUsage    = 2 // a missing or invalid flag
+	exitCodeDenied   = 3 // the server said 401/403
+	exitCodeNotFound = 4 // the server said 404
+)
+
+// usageError is a missing or invalid flag; its message names the flag.
+type usageError struct{ msg string }
+
+func (e *usageError) Error() string { return e.msg }
+
+func usagef(format string, a ...any) error { return &usageError{fmt.Sprintf(format, a...)} }
+
+// exitCode maps err to the documented exit codes.
+func exitCode(err error) int {
+	var ue *usageError
+	if errors.As(err, &ue) {
+		return exitCodeUsage
+	}
+	var ae *templates.APIError
+	if errors.As(err, &ae) {
+		switch ae.Status {
+		case 401, 403:
+			return exitCodeDenied
+		case 404:
+			return exitCodeNotFound
+		}
+	}
+	return exitCodeError
 }
 
 // renderedYAML joins the successful results into one YAML stream.

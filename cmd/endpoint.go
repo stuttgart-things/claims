@@ -249,6 +249,7 @@ func init() {
 	f.StringVar(&endpointAddFlags.Issuer, "issuer", "", "OIDC issuer for `claims login` (the lab's ZITADEL)")
 	f.StringVar(&endpointAddFlags.ClientID, "client-id", "", "Client ID of the native ZITADEL app")
 	f.StringVar(&endpointAddFlags.CAFile, "ca-file", "", "Extra PEM roots for the issuer")
+	f.StringVar(&endpointAddFlags.OrdersURL, "orders-url", "", "The lab's machinery-order-service, for claims order / claims orders")
 	f.BoolVar(&endpointAddUse, "use", false, "Also make it the current endpoint")
 	addEndpointFlag(endpointCurrentCmd)
 
@@ -315,6 +316,9 @@ func runEndpointList(out io.Writer) error {
 		login := ""
 		if e.Issuer != "" {
 			login = "  login: " + e.Issuer
+		}
+		if e.OrdersURL != "" {
+			login += "  orders: " + e.OrdersURL
 		}
 		_, _ = fmt.Fprintf(out, "%s %-12s %s%s\n", mark, n, e.URL, login)
 	}

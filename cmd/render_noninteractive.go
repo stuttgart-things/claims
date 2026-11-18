@@ -19,6 +19,7 @@ func runNonInteractive(config *RenderConfig) error {
 	}
 
 	client := newAPIClient(config.APIUrl, config.Auth)
+	client.RenderOnly = config.DryRun || config.Stdout
 
 	// Parse parameter file if provided
 	var templateParams []params.TemplateParams

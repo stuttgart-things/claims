@@ -28,6 +28,9 @@ type Endpoint struct {
 	Issuer   string `yaml:"issuer,omitempty"`    // OIDC issuer for `claims login`
 	ClientID string `yaml:"client-id,omitempty"` // native app of the issuer
 	CAFile   string `yaml:"ca-file,omitempty"`   // extra PEM roots for the issuer
+	// OrdersURL is the lab's machinery-order-service, for claims order and
+	// claims orders (docs/adr/0002-order-through-the-order-service.md).
+	OrdersURL string `yaml:"orders-url,omitempty"`
 }
 
 // Config is the config file.
