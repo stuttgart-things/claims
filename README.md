@@ -38,6 +38,10 @@ go build -o claims .
 
 | Command | Description |
 |---------|-------------|
+| `claims templates` | List the claim templates, or one template's parameters (API login only) |
+| `claims order` | Order a claim through machinery-order-service: no git token, the service opens the PR |
+| `claims orders` | Follow orders: `list`, `get`, `watch`, `cancel` |
+| `claims clusters` | List the management clusters orders can go to |
 | `claims render` | Render claim templates, save locally or via Git PR |
 | `claims encrypt` | Create a SOPS-encrypted Kubernetes Secret via Git PR |
 | `claims delete` | Delete a claim via Git PR |
@@ -50,6 +54,44 @@ go build -o claims .
 | `claims endpoint` | Named API endpoints: `list`, `use`, `add`, `remove`, `current` |
 | `claims doctor` | Check API endpoint, login and git/GitHub credentials (changes nothing) |
 | `claims version` | Print version information |
+
+### order: through machinery-order-service, without a git token
+
+`claims order` places an order with machinery-order-service, which renders it
+with your login, opens the pull request with its own GitHub identity and
+follows it through merge and build
+([ADR 0002](docs/adr/0002-order-through-the-order-service.md)). You need a
+login (`claims login`, `--api-token` or client credentials), no repository and
+no git token.
+
+The service URL belongs to the endpoint (or `--orders-url` / `$CLAIM_ORDERS_URL`):
+
+```bash
+claims endpoint add labul https://claim-machinery-api.example.com \
+  --issuer https://zitadel.example.com --client-id <id>@claims \
+  --orders-url https://orders.example.com --use
+```
+
+At a terminal everything missing is asked for; without one (or with
+`--non-interactive` / `-o json`) nothing is asked and a missing value is an
+error naming the flag ([ADR 0001](docs/adr/0001-interactive-and-programmatic.md)):
+
+```bash
+claims templates                                   # what can I order?
+claims templates native-vm-labul-proxmox           # its parameters
+claims clusters                                    # where can it go?
+claims order native-vm-labul-proxmox --cluster machinery-labul \
+  -p name=demo -p size=small --reason "test VM"    # -> order ID, phase Ordered
+claims orders watch ord-0123456789ab               # PROpen (waits for a merge) ... Ready
+claims orders list                                 # yours and your teams'
+claims orders cancel ord-0123456789ab              # before the merge
+```
+
+`-o json` prints the service's objects. Exit codes: 0 ok, 1 error, 2 missing or
+invalid flag, 3 denied (401/403, the server's reason is shown), 4 not found.
+
+`render --stdout` and `--dry-run` order nothing, so they ask claim-machinery-api
+not to send an order notification (`notify=false`).
 
 ### render
 

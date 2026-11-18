@@ -20,6 +20,10 @@ const defaultTimeout = 30 * time.Second
 type Client struct {
 	BaseURL    string
 	HTTPClient *http.Client
+	// RenderOnly marks renders that order nothing (--stdout, --dry-run):
+	// claim-machinery-api then sends no order notification (notify=false,
+	// claim-machinery-api#144). Older APIs ignore the parameter.
+	RenderOnly bool
 }
 
 // NewClient creates a new template API client
@@ -78,6 +82,9 @@ func (c *Client) RenderTemplate(templateName string, params map[string]interface
 	}
 
 	url := fmt.Sprintf("%s/api/v1/claim-templates/%s/order", c.BaseURL, templateName)
+	if c.RenderOnly {
+		url += "?notify=false"
+	}
 	resp, err := c.HTTPClient.Post(url, "application/json", bytes.NewReader(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("HTTP request failed: %w", err)
@@ -134,6 +141,10 @@ func (e *APIError) FieldNames() []string {
 // ansiRE matches ANSI escape sequences (older APIs pass KCL's colored
 // stderr through).
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+
+// StatusError is the error for an unexpected status of a service that answers
+// like claim-machinery-api ({"error", "fields"}), e.g. machinery-order-service.
+func StatusError(resp *http.Response) error { return statusError(resp) }
 
 // statusError builds the error for a non-200 response. 401/403 responses get
 // a hint naming the auth settings (CLAIM_API_TOKEN / CLAIM_API_OIDC_*) and
