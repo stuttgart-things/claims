@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "stuttgart-things": {
+      "source": { "source": "github", "repo": "stuttgart-things/claude-plugins" }
+    }
+  },
+  "enabledPlugins": {
+    "sthings-dev@stuttgart-things": true
+  }
+}
