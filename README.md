@@ -87,6 +87,17 @@ claims orders list                                 # yours and your teams'
 claims orders cancel ord-0123456789ab              # before the merge
 ```
 
+The pull request waits for a human to merge it. `--auto-merge` asks the service
+to merge it once its checks pass. That works only where a rule of the cluster
+covers you, the template and the parameters (`claims clusters` lists the rules);
+otherwise the order is refused with exit 3 and the reason
+(machinery-order-service ADR 0002).
+
+```bash
+claims order native-vm-labul-proxmox --cluster machinery-labul \
+  -p name=demo -p size=small --auto-merge --wait     # merged once checks pass
+```
+
 `-o json` prints the service's objects. Exit codes: 0 ok, 1 error, 2 missing or
 invalid flag, 3 denied (401/403, the server's reason is shown), 4 not found.
 

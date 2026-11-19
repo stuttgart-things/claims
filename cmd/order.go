@@ -36,6 +36,7 @@ var (
 
 	orderCluster      string
 	orderReason       string
+	orderAutoMerge    bool
 	orderParams       []string
 	orderParamsFile   string
 	orderWait         bool
@@ -256,15 +257,32 @@ func runClusters(out io.Writer) error {
 		return writeJSON(out, cs)
 	}
 	tw := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "NAME\tLAB\tTAKES ORDERS\tORDERS PATH")
+	_, _ = fmt.Fprintln(tw, "NAME\tLAB\tTAKES ORDERS\tAUTO-MERGE\tORDERS PATH")
+	var rules []string
 	for _, c := range cs {
 		takes := "yes"
 		if c.Cordoned {
 			takes = "no (cordoned)"
 		}
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", c.Name, c.Lab, takes, c.OrdersPath)
+		am := "-"
+		if c.AutoMerge != nil && len(c.AutoMerge.Rules) > 0 {
+			am = fmt.Sprintf("%d rule(s)", len(c.AutoMerge.Rules))
+			for _, r := range c.AutoMerge.Rules {
+				rules = append(rules, "  "+c.Name+"  "+r.String())
+			}
+		}
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", c.Name, c.Lab, takes, am, c.OrdersPath)
 	}
-	return tw.Flush()
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	if len(rules) > 0 {
+		_, _ = fmt.Fprintln(out, "\nAuto-merge rules (claims order --auto-merge):")
+		for _, r := range rules {
+			_, _ = fmt.Fprintln(out, r)
+		}
+	}
+	return nil
 }
 
 // claims order
@@ -283,12 +301,19 @@ parameters) and confirms before ordering. Without a terminal, or with
 template's required parameters (-p / -f) must be given, and a missing one is
 an error naming the flag.
 
+The pull request waits for a human to merge it. --auto-merge asks the
+service to merge it itself once its checks pass; the service allows that
+only when a rule of the cluster covers you, the template and the parameters
+(claims clusters shows the rules), and refuses the order otherwise.
+
 The result is the order ID and its phase. Follow it with
 'claims orders watch <id>', or pass --wait.`,
 	Example: `  claims order                                   # interactive
   claims order native-vm-labul-proxmox --cluster machinery-labul \
     -p name=demo -p size=small --reason "test VM"
-  claims order native-vm-labul-proxmox --cluster machinery-labul -f params.yaml --wait -o json`,
+  claims order native-vm-labul-proxmox --cluster machinery-labul -f params.yaml --wait -o json
+  claims order native-vm-labul-proxmox --cluster machinery-labul \
+    -p name=demo -p size=small --auto-merge --wait   # if a rule allows it`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		exitOn(runOrder(os.Stdout, args))
@@ -304,7 +329,7 @@ func runOrder(out io.Writer, args []string) error {
 	if err != nil {
 		return err
 	}
-	req := orders.CreateRequest{ManagementCluster: orderCluster, Reason: orderReason}
+	req := orders.CreateRequest{ManagementCluster: orderCluster, Reason: orderReason, AutoMerge: orderAutoMerge}
 	if len(args) == 1 {
 		req.Template = args[0]
 	}
@@ -404,6 +429,9 @@ func runOrder(out io.Writer, args []string) error {
 	if interactive {
 		ok := true
 		summary := fmt.Sprintf("%s on %s with %d parameter(s)", req.Template, req.ManagementCluster, len(p))
+		if req.AutoMerge {
+			summary += ", auto-merge"
+		}
 		if err := huh.NewConfirm().Title("Order " + summary + "?").Affirmative("Order").Negative("Cancel").Value(&ok).Run(); err != nil {
 			return err
 		}
@@ -654,7 +682,11 @@ func watchOrder(out io.Writer, c *orders.Client, id, until string, timeout, inte
 			if verbose {
 				line := fmt.Sprintf("%s  %-9s %s", time.Now().UTC().Format("15:04:05"), ph, o.Status.Message)
 				if ph == "PROpen" && o.PRURL() != "" {
-					line += "  " + o.PRURL() + " (waits for a merge)"
+					if o.Spec.AutoMerge != nil {
+						line += "  " + o.PRURL() + " (auto-merge once its checks pass)"
+					} else {
+						line += "  " + o.PRURL() + " (waits for a merge)"
+					}
 				}
 				if ph == "Ready" && o.Address() != "" {
 					line += "  address " + o.Address()
@@ -722,6 +754,9 @@ func printOrderLine(out io.Writer, o *orders.Order) {
 		_, _ = fmt.Fprintf(out, " (%s)", o.Status.Message)
 	}
 	_, _ = fmt.Fprintln(out)
+	if am := o.Spec.AutoMerge; am != nil {
+		_, _ = fmt.Fprintf(out, "Auto-merge: the service merges the pull request once its checks pass (rule %s)\n", am.Rule)
+	}
 }
 
 func printOrder(out io.Writer, o *orders.Order) {
@@ -738,6 +773,9 @@ func printOrder(out io.Writer, o *orders.Order) {
 	row("Message", o.Status.Message)
 	row("Requested by", o.Spec.RequestedBy)
 	row("Reason", o.Spec.Reason)
+	if am := o.Spec.AutoMerge; am != nil {
+		row("Auto-merge", "yes, rule "+am.Rule)
+	}
 	row("Pull request", o.PRURL())
 	row("Address", o.Address())
 	row("Created", o.Metadata.CreationTimestamp.UTC().Format(time.RFC3339))
@@ -804,6 +842,7 @@ func init() {
 	f := orderCmd.Flags()
 	f.StringVar(&orderCluster, "cluster", "", "Management cluster (list them: claims clusters)")
 	f.StringVar(&orderReason, "reason", "", "Why, shown in the pull request")
+	f.BoolVar(&orderAutoMerge, "auto-merge", false, "Let the service merge the pull request once its checks pass (only where a rule of the cluster allows it; see claims clusters)")
 	f.StringSliceVarP(&orderParams, "param", "p", nil, "Parameter key=value (repeatable)")
 	f.StringVarP(&orderParamsFile, "params-file", "f", "", "YAML/JSON file with template and parameters")
 	f.BoolVar(&orderWait, "wait", false, "Wait until the order is Ready (or fails); PROpen waits for a merge")
