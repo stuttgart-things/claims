@@ -93,6 +93,12 @@ type Order struct {
 			Time    time.Time `json:"time"`
 			Message string    `json:"message,omitempty"`
 		} `json:"history,omitempty"`
+		Conditions []struct {
+			Type    string `json:"type"`
+			Status  string `json:"status"`
+			Reason  string `json:"reason,omitempty"`
+			Message string `json:"message,omitempty"`
+		} `json:"conditions,omitempty"`
 	} `json:"status"`
 
 	Raw json.RawMessage `json:"-"`

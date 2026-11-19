@@ -82,7 +82,7 @@ claims templates native-vm-labul-proxmox           # its parameters
 claims clusters                                    # where can it go?
 claims order native-vm-labul-proxmox --cluster machinery-labul \
   -p name=demo -p size=small --reason "test VM"    # -> order ID, phase Ordered
-claims orders watch ord-0123456789ab               # PROpen (waits for a merge) ... Ready
+claims orders watch ord-0123456789ab               # PROpen (waits for a merge) ... Ready; a line per phase and per new message
 claims orders list                                 # yours and your teams'
 claims orders cancel ord-0123456789ab              # before the merge
 ```
