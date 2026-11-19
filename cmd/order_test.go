@@ -21,6 +21,7 @@ type fakeOrderService struct {
 	created []map[string]any
 	auth    []string
 	gets    int
+	amGets  int
 }
 
 func (f *fakeOrderService) handler(t *testing.T) http.Handler {
@@ -66,6 +67,27 @@ func (f *fakeOrderService) handler(t *testing.T) http.Handler {
 			"metadata": map[string]any{"name": "ord-1"},
 			"spec":     spec,
 			"status":   map[string]any{"phase": "Ordered", "message": "accepted"},
+		})
+	})
+	mux.HandleFunc("GET /api/v1/orders/ord-am", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		f.amGets++
+		n := f.amGets
+		f.mu.Unlock()
+		steps := []struct{ phase, msg string }{
+			{"PROpen", "pull request https://example.com/pr/8"},
+			{"PROpen", "pull request https://example.com/pr/8; auto-merge: waiting for checks: validate"},
+			{"PROpen", "pull request https://example.com/pr/8; auto-merge: waiting for checks: validate"},
+			{"PROpen", "pull request https://example.com/pr/8; auto-merge: cannot read checks: 403"},
+			{"Ready", "ready"},
+		}
+		st := steps[min(n-1, len(steps)-1)]
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"name": "ord-am"},
+			"spec":     map[string]any{"autoMerge": map[string]any{"rule": "personas"}},
+			"status": map[string]any{"phase": st.phase, "message": st.msg,
+				"delivery":   map[string]any{"pullRequest": map[string]any{"number": 8, "url": "https://example.com/pr/8"}},
+				"conditions": []any{map[string]any{"type": "AutoMerge", "status": "Unknown", "reason": "Waiting", "message": "403 Resource not accessible by integration"}}},
 		})
 	})
 	mux.HandleFunc("GET /api/v1/orders/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -277,5 +299,33 @@ func TestOrderAutoMerge(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "1 rule(s)") || !strings.Contains(out.String(), "personas: group:default/ai-personas; templates vm; size=small") {
 		t.Errorf("clusters:\n%s", out.String())
+	}
+}
+
+func TestOrdersWatchMessages(t *testing.T) {
+	setupOrderTest(t)
+	var out bytes.Buffer
+	if err := runOrdersWatch(&out, "ord-am"); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	// PROpen first (with the PR suffix), two new messages, Ready; the repeated
+	// message is not printed again.
+	if len(lines) != 4 {
+		t.Fatalf("%d lines:\n%s", len(lines), out.String())
+	}
+	if !strings.Contains(lines[0], "(auto-merge once its checks pass)") ||
+		!strings.Contains(lines[1], "auto-merge: waiting for checks: validate") || strings.Contains(lines[1], "once its checks pass") ||
+		!strings.Contains(lines[2], "cannot read checks: 403") || !strings.Contains(lines[3], "Ready") {
+		t.Errorf("watch:\n%s", out.String())
+	}
+
+	out.Reset()
+	outputFlag = "table"
+	if err := runOrdersGet(&out, "ord-am"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Conditions:\n  AutoMerge=Unknown Waiting: 403 Resource not accessible by integration") {
+		t.Errorf("get:\n%s", out.String())
 	}
 }

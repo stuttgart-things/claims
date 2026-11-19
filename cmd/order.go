@@ -672,16 +672,18 @@ func runOrdersWatch(out io.Writer, id string) error {
 // when verbose.
 func watchOrder(out io.Writer, c *orders.Client, id, until string, timeout, interval time.Duration, verbose bool) (*orders.Order, error) {
 	deadline := time.Now().Add(timeout)
-	last := ""
+	last, lastMsg := "", ""
 	for {
 		o, err := c.Get(id)
 		if err != nil {
 			return nil, err
 		}
-		if ph := o.Phase(); ph != last {
+		// A line per phase change, and per new message within a phase (e.g.
+		// what an auto-merge waits for), so a long PROpen says why.
+		if ph := o.Phase(); ph != last || o.Status.Message != lastMsg {
 			if verbose {
 				line := fmt.Sprintf("%s  %-9s %s", time.Now().UTC().Format("15:04:05"), ph, o.Status.Message)
-				if ph == "PROpen" && o.PRURL() != "" {
+				if ph == "PROpen" && ph != last && o.PRURL() != "" {
 					if o.Spec.AutoMerge != nil {
 						line += "  " + o.PRURL() + " (auto-merge once its checks pass)"
 					} else {
@@ -693,7 +695,7 @@ func watchOrder(out io.Writer, c *orders.Client, id, until string, timeout, inte
 				}
 				_, _ = fmt.Fprintln(out, strings.TrimRight(line, " "))
 			}
-			last = ph
+			last, lastMsg = ph, o.Status.Message
 		}
 		switch {
 		case until != "" && o.Phase() == until:
@@ -784,6 +786,19 @@ func printOrder(out io.Writer, o *orders.Order) {
 		_, _ = fmt.Fprintln(out, "Timeline:")
 		for _, h := range o.Status.History {
 			_, _ = fmt.Fprintf(out, "  %s  %-9s %s\n", h.Time.UTC().Format("2006-01-02 15:04:05"), h.Phase, h.Message)
+		}
+	}
+	if len(o.Status.Conditions) > 0 {
+		_, _ = fmt.Fprintln(out, "Conditions:")
+		for _, c := range o.Status.Conditions {
+			line := fmt.Sprintf("  %s=%s", c.Type, c.Status)
+			if c.Reason != "" {
+				line += " " + c.Reason
+			}
+			if c.Message != "" {
+				line += ": " + c.Message
+			}
+			_, _ = fmt.Fprintln(out, line)
 		}
 	}
 }
