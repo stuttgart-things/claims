@@ -1,3 +1,10 @@
+# [0.29.0](https://github.com/stuttgart-things/claims/compare/v0.28.0...v0.29.0) (2026-11-19)
+
+
+### Features
+
+* **order:** --auto-merge, rules in claims clusters ([#129](https://github.com/stuttgart-things/claims/issues/129)) ([b011e4e](https://github.com/stuttgart-things/claims/commit/b011e4ee4a90cd6d5b6ac8569c24d2478db222d4)), closes [machinery-order-service#17](https://github.com/machinery-order-service/issues/17)
+
 # [0.28.0](https://github.com/stuttgart-things/claims/compare/v0.27.0...v0.28.0) (2026-11-18)
 
 
