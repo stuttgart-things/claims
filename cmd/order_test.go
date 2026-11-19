@@ -36,7 +36,9 @@ func (f *fakeOrderService) handler(t *testing.T) http.Handler {
 		}}})
 	})
 	mux.HandleFunc("GET /api/v1/management-clusters", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"name": "mc-a", "lab": "lab-a", "cordoned": false}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"name": "mc-a", "lab": "lab-a", "cordoned": false,
+			"autoMerge": map[string]any{"rules": []any{map[string]any{"name": "personas", "groups": []string{"group:default/ai-personas"},
+				"templates": []string{"vm"}, "parameters": map[string]any{"size": []string{"small"}}}}}}}})
 	})
 	mux.HandleFunc("POST /api/v1/orders", func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
@@ -45,15 +47,24 @@ func (f *fakeOrderService) handler(t *testing.T) http.Handler {
 		f.created = append(f.created, body)
 		f.auth = append(f.auth, r.Header.Get("Authorization"))
 		f.mu.Unlock()
+		if body["autoMerge"] == true && body["parameters"].(map[string]any)["size"] != "small" {
+			w.WriteHeader(403)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "auto-merge not allowed on mc-a: personas: size=large not in [small]"})
+			return
+		}
 		if body["managementCluster"] == "denied" {
 			w.WriteHeader(403)
 			_ = json.NewEncoder(w).Encode(map[string]any{"error": "forbidden: template orderRoles"})
 			return
 		}
+		spec := map[string]any{"template": body["template"], "placement": map[string]any{"managementCluster": body["managementCluster"]}}
+		if body["autoMerge"] == true {
+			spec["autoMerge"] = map[string]any{"rule": "personas"}
+		}
 		w.WriteHeader(201)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"metadata": map[string]any{"name": "ord-1"},
-			"spec":     map[string]any{"template": body["template"], "placement": map[string]any{"managementCluster": body["managementCluster"]}},
+			"spec":     spec,
 			"status":   map[string]any{"phase": "Ordered", "message": "accepted"},
 		})
 	})
@@ -88,6 +99,7 @@ func setupOrderTest(t *testing.T) *fakeOrderService {
 	t.Setenv("CLAIM_API_TOKEN", "test-token")
 	reset := func() {
 		orderCluster, orderReason, orderParams, orderParamsFile = "", "", nil, ""
+		orderAutoMerge = false
 		orderWait, orderNonInter, outputFlag = false, true, "table"
 		orderWaitTimeout, watchInterval, watchUntil = time.Minute, time.Millisecond, ""
 		ordersURLFlag, orderAPIURLFlag = "", ""
@@ -222,5 +234,48 @@ func TestExitCodes(t *testing.T) {
 		if got := exitCode(err); got != want {
 			t.Errorf("%v: %d, want %d", err, got, want)
 		}
+	}
+}
+
+func TestOrderAutoMerge(t *testing.T) {
+	f := setupOrderTest(t)
+	orderCluster, orderAutoMerge = "mc-a", true
+
+	// A rule covers it: autoMerge is sent and the order says so.
+	orderParams = []string{"name=demo", "size=small"}
+	var out bytes.Buffer
+	if err := runOrder(&out, []string{"vm"}); err != nil {
+		t.Fatal(err)
+	}
+	if f.created[0]["autoMerge"] != true {
+		t.Errorf("request %v", f.created[0])
+	}
+	if !strings.Contains(out.String(), "Auto-merge: the service merges") || !strings.Contains(out.String(), "(rule personas)") {
+		t.Errorf("output:\n%s", out.String())
+	}
+
+	// No rule covers it: the service's reason, exit 3 (denied).
+	orderParams = []string{"name=demo", "size=large"}
+	err := runOrder(&bytes.Buffer{}, []string{"vm"})
+	if err == nil || !strings.Contains(err.Error(), "size=large not in [small]") || exitCode(err) != exitCodeDenied {
+		t.Errorf("err %v (exit %d)", err, exitCode(err))
+	}
+
+	// Without the flag nothing is asked for.
+	orderAutoMerge, orderParams = false, []string{"name=demo", "size=large"}
+	if err := runOrder(&bytes.Buffer{}, []string{"vm"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := f.created[2]["autoMerge"]; ok {
+		t.Errorf("autoMerge sent without the flag: %v", f.created[2])
+	}
+
+	// claims clusters shows the rules.
+	out.Reset()
+	if err := runClusters(&out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "1 rule(s)") || !strings.Contains(out.String(), "personas: group:default/ai-personas; templates vm; size=small") {
+		t.Errorf("clusters:\n%s", out.String())
 	}
 }

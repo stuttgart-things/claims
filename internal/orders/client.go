@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -33,6 +34,9 @@ type CreateRequest struct {
 	Parameters        map[string]any `json:"parameters,omitempty"`
 	ManagementCluster string         `json:"managementCluster"`
 	Reason            string         `json:"reason,omitempty"`
+	// AutoMerge asks the service to merge the pull request once its checks
+	// pass; the service refuses (403) unless a rule of the cluster allows it.
+	AutoMerge bool `json:"autoMerge,omitempty"`
 }
 
 // Final phases: nothing more happens to the order without someone acting.
@@ -63,7 +67,10 @@ type Order struct {
 		Placement   struct {
 			ManagementCluster string `json:"managementCluster"`
 		} `json:"placement"`
-		Cancel bool `json:"cancel,omitempty"`
+		Cancel    bool `json:"cancel,omitempty"`
+		AutoMerge *struct {
+			Rule string `json:"rule"`
+		} `json:"autoMerge,omitempty"`
 	} `json:"spec"`
 	Status struct {
 		Phase    string `json:"phase,omitempty"`
@@ -134,6 +141,42 @@ type Cluster struct {
 	Cordoned   bool   `json:"cordoned"`
 	Repository string `json:"repository,omitempty"`
 	OrdersPath string `json:"ordersPath,omitempty"`
+	// AutoMerge says who may order with --auto-merge on this cluster.
+	AutoMerge *AutoMerge `json:"autoMerge,omitempty"`
+}
+
+// AutoMerge are a cluster's auto-merge rules.
+type AutoMerge struct {
+	Method string          `json:"method,omitempty"`
+	Rules  []AutoMergeRule `json:"rules,omitempty"`
+}
+
+// AutoMergeRule allows auto-merge for some orderers, templates and
+// parameter values.
+type AutoMergeRule struct {
+	Name       string              `json:"name"`
+	Users      []string            `json:"users,omitempty"`
+	Groups     []string            `json:"groups,omitempty"`
+	Templates  []string            `json:"templates,omitempty"`
+	Parameters map[string][]string `json:"parameters,omitempty"`
+}
+
+// String is the rule in one line, e.g.
+// "persona-test-vms: group:default/ai-personas; templates vm; size=small".
+func (r AutoMergeRule) String() string {
+	parts := []string{strings.Join(append(append([]string{}, r.Users...), r.Groups...), ", ")}
+	if len(r.Templates) > 0 {
+		parts = append(parts, "templates "+strings.Join(r.Templates, ", "))
+	}
+	keys := make([]string, 0, len(r.Parameters))
+	for k := range r.Parameters {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		parts = append(parts, k+"="+strings.Join(r.Parameters[k], "|"))
+	}
+	return r.Name + ": " + strings.Join(parts, "; ")
 }
 
 func (c *Client) do(method, path string, body any, want int) ([]byte, error) {
