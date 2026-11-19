@@ -1,3 +1,10 @@
+## [0.29.1](https://github.com/stuttgart-things/claims/compare/v0.29.0...v0.29.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **orders:** watch prints new messages, get shows conditions ([#130](https://github.com/stuttgart-things/claims/issues/130)) ([877abc3](https://github.com/stuttgart-things/claims/commit/877abc36893155da992aa19c927d3bbbfb0b3b25)), closes [machinery-order-service#18](https://github.com/machinery-order-service/issues/18)
+
 # [0.29.0](https://github.com/stuttgart-things/claims/compare/v0.28.0...v0.29.0) (2026-11-19)
 
 
