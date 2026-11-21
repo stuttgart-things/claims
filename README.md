@@ -599,7 +599,12 @@ claims delete --xr
 | `--dry-run` | Show file, runs, kustomization entries, branch and title |
 | `--merge` | With `--create-pr`: wait for the PR's checks, then squash-merge it (see [merge](#merge-finish-an-order-change-or-deletion-pr)). Merging starts the deletion |
 
-Without `--create-pr` the files are only removed locally. `--git-branch` may only name `delete-claim/...`. In a local checkout you must be on `main` (the PR base): the gate accepts nothing but the claim's removal on top of it.
+Without `--create-pr` the files are only removed locally. `--git-branch` may only name `delete-claim/...`. In a local checkout you must be on `main` (the PR base): the gate accepts nothing but the claim's removal on top of it. Where `main` cannot be checked out -- a git worktree (another worktree holds `main`) or a detached HEAD -- let claims work on a fresh clone instead:
+
+```bash
+claims delete --git-repo-url https://github.com/stuttgart-things/stuttgart-things.git \
+  --source-path clusters/labul/proxmox/machinery-labul-orders-xrs/my-vm.yaml --reason "done" --create-pr --merge
+```
 
 ### change: resize a VM claim or re-run its Ansible
 
