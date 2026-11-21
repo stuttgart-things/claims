@@ -1,3 +1,10 @@
+## [0.29.2](https://github.com/stuttgart-things/claims/compare/v0.29.1...v0.29.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **delete:** name --git-repo-url when main cannot be checked out ([#133](https://github.com/stuttgart-things/claims/issues/133)) ([3343970](https://github.com/stuttgart-things/claims/commit/33439703a4468d9dfa81e7107da4f9ce79071e24)), closes [stuttgart-things#4380](https://github.com/stuttgart-things/issues/4380) [4791/#4792](https://github.com/stuttgart-things/claims/issues/4792)
+
 ## [0.29.1](https://github.com/stuttgart-things/claims/compare/v0.29.0...v0.29.1) (2026-11-19)
 
 
