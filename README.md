@@ -253,17 +253,48 @@ URL colons in `http://`, `https://`, and port numbers are handled correctly — 
 
 ### Endpoints (claims endpoint)
 
-Named claim-machinery-api endpoints, like kube contexts, in `~/.config/claims/config.yaml` (override: `CLAIMS_CONFIG_FILE`). Each holds the API URL and what `claims login` needs (issuer, client ID, optional CA file). Nothing is pre-configured.
+Named claim-machinery-api endpoints, like kube contexts, in `~/.config/claims/config.yaml` (override: `CLAIMS_CONFIG_FILE`). Each holds the API URL and what `claims login` needs (issuer, client ID, optional CA file). Nothing is pre-configured and nothing lab-specific is built into the binary: labs, URLs and login data live only in this file (or in the environment, see below).
+
+```yaml
+# ~/.config/claims/config.yaml
+current: labda
+endpoints:
+  labda:
+    url: https://claim-machinery-api.machinery.4sthings.tiab.ssc.sva.de
+    issuer: https://zitadel.sthings-infra.4sthings.tiab.ssc.sva.de   # for claims login
+    client-id: "<client-id>"                                          # native ZITADEL app (claims CLI)
+    ca-file: /home/<user>/.config/zitadel/ca-labda.pem   # issuer with a private CA; absolute path, no ~
+  labul:
+    url: https://claim-machinery-api.machinery-labul.sthings-vsphere.labul.sva.de
+    issuer: https://zitadel.infra.sthings-vsphere.labul.sva.de
+    client-id: "<client-id>"
+    ca-file: /home/<user>/.config/zitadel/ca-labul.pem
+```
+
+An endpoint without `issuer`/`client-id` works for reading and for APIs without order auth; `claims login --endpoint <name>` then needs `--issuer`/`--client-id` (or `CLAIM_API_LOGIN_*`). Add them to the endpoint once:
 
 ```bash
 claims endpoint add labda https://claim-machinery-api.machinery.4sthings.tiab.ssc.sva.de \
-  --issuer https://zitadel.sthings-infra.4sthings.tiab.ssc.sva.de --client-id <id>@claims --use
-claims endpoint add labul https://claim-machinery-api.machinery-labul.sthings-vsphere.labul.sva.de
+  --issuer https://zitadel.sthings-infra.4sthings.tiab.ssc.sva.de --client-id <client-id> \
+  --ca-file ~/.config/zitadel/ca-labda.pem --use
+claims endpoint add labul https://claim-machinery-api.machinery-labul.sthings-vsphere.labul.sva.de \
+  --issuer https://zitadel.infra.sthings-vsphere.labul.sva.de --client-id <client-id> \
+  --ca-file ~/.config/zitadel/ca-labul.pem
 claims endpoint list            # * marks the current one
 claims endpoint use labul
 claims endpoint current         # which API a command would use, and why
 claims login --endpoint labda   # issuer/client-id come from the endpoint
 claims render --endpoint labda
+```
+
+Without a config file, the environment does the same (e.g. in CI):
+
+```bash
+export CLAIM_API_URL=https://claim-machinery-api.machinery-labul.sthings-vsphere.labul.sva.de
+export CLAIM_API_LOGIN_ISSUER=https://zitadel.infra.sthings-vsphere.labul.sva.de
+export CLAIM_API_LOGIN_CLIENT_ID=<client-id>
+export CLAIM_API_LOGIN_CA_FILE=~/.config/zitadel/ca-labul.pem
+claims login && claims render
 ```
 
 Which API a command talks to: `-a/--api-url` > `$CLAIM_API_URL` > `--endpoint`/`$CLAIM_ENDPOINT` > the current endpoint. With none of them an interactive command offers a picker and a non-interactive one fails with the fix — there is **no implicit `http://localhost:8080`** any more; pass `-a http://localhost:8080` for a local API. `render`, `encrypt` and `whoami` print the endpoint name with the URL. See [docs/11-endpoints-preflight.md](docs/11-endpoints-preflight.md).
@@ -801,6 +832,11 @@ rendering, the abort offers to print the YAML or save it to a temp file first.
 | `CLAIM_API_URL` | API base URL (colon-separated for multiple endpoints); wins over `CLAIM_ENDPOINT` | - (current endpoint; no localhost default) |
 | `CLAIM_ENDPOINT` | Named endpoint to use (like `--endpoint`) | current endpoint |
 | `CLAIMS_CONFIG_FILE` | Endpoint config file | `~/.config/claims/config.yaml` |
+| `CLAIM_API_LOGIN_ISSUER` | OIDC issuer for `claims login` (like `--issuer`; wins over the endpoint) | endpoint `issuer` |
+| `CLAIM_API_LOGIN_CLIENT_ID` | Client ID for `claims login` (like `--client-id`) | endpoint `client-id` |
+| `CLAIM_API_LOGIN_SCOPE` | Scope(s) for `claims login` (like `--scope`) | built-in default |
+| `CLAIM_API_LOGIN_CA_FILE` | Extra PEM roots for the issuer (like `--ca-file`) | endpoint `ca-file` |
+| `CLAIMS_CREDENTIALS_FILE` | Token cache of `claims login` | `~/.config/claims/credentials.json` |
 | `CLAIM_API_TOKEN` | Static bearer token for claim-machinery-api (wins over client credentials) | - (no auth) |
 | `CLAIM_API_OIDC_TOKEN_URL` | OIDC token endpoint for client-credentials auth | - |
 | `CLAIM_API_OIDC_CLIENT_ID` | OIDC client ID for client-credentials auth | - |
