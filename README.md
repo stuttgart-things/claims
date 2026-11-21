@@ -264,6 +264,7 @@ endpoints:
     issuer: https://zitadel.sthings-infra.4sthings.tiab.ssc.sva.de   # for claims login
     client-id: "<client-id>"                                          # native ZITADEL app (claims CLI)
     ca-file: /home/<user>/.config/zitadel/ca-labda.pem   # issuer with a private CA; absolute path, no ~
+    # orders-url: https://<machinery-order-service>      # optional, for claims order / claims orders
   labul:
     url: https://claim-machinery-api.machinery-labul.sthings-vsphere.labul.sva.de
     issuer: https://zitadel.infra.sthings-vsphere.labul.sva.de
@@ -836,6 +837,7 @@ rendering, the abort offers to print the YAML or save it to a temp file first.
 | `CLAIM_API_LOGIN_CLIENT_ID` | Client ID for `claims login` (like `--client-id`) | endpoint `client-id` |
 | `CLAIM_API_LOGIN_SCOPE` | Scope(s) for `claims login` (like `--scope`) | built-in default |
 | `CLAIM_API_LOGIN_CA_FILE` | Extra PEM roots for the issuer (like `--ca-file`) | endpoint `ca-file` |
+| `CLAIM_ORDERS_URL` | machinery-order-service for `claims order` / `claims orders` (like `--orders-url`) | endpoint `orders-url` |
 | `CLAIMS_CREDENTIALS_FILE` | Token cache of `claims login` | `~/.config/claims/credentials.json` |
 | `CLAIM_API_TOKEN` | Static bearer token for claim-machinery-api (wins over client credentials) | - (no auth) |
 | `CLAIM_API_OIDC_TOKEN_URL` | OIDC token endpoint for client-credentials auth | - |
