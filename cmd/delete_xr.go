@@ -179,7 +179,8 @@ func runDeleteXR(config *DeleteConfig, pick func(repoRoot string, config *Delete
 			return err
 		}
 		if cur != base {
-			return fmt.Errorf("check out %s first (on %s): the deletion gate accepts only the claim's removal on top of %s", base, cur, base)
+			return fmt.Errorf("check out %s first (on %s): the deletion gate accepts only the claim's removal on top of %s; "+
+				"where %s cannot be checked out (a git worktree, a detached HEAD) add --git-repo-url <repo URL> to work on a fresh clone", base, cur, base, base)
 		}
 	}
 	return pushXRDeletion(g, repoRoot, r, conv, config, user)
