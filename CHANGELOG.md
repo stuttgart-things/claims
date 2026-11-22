@@ -1,3 +1,10 @@
+# [0.30.0](https://github.com/stuttgart-things/claims/compare/v0.29.2...v0.30.0) (2026-11-22)
+
+
+### Features
+
+* **orders:** claims orders teardown, watch until Deleted, address readiness ([c75e872](https://github.com/stuttgart-things/claims/commit/c75e872973b2f4b1ef3b03993f87d20bd4b0557e)), closes [stuttgart-things/machinery-order-service#19](https://github.com/stuttgart-things/machinery-order-service/issues/19) [#112](https://github.com/stuttgart-things/claims/issues/112)
+
 ## [0.29.2](https://github.com/stuttgart-things/claims/compare/v0.29.1...v0.29.2) (2026-11-21)
 
 
