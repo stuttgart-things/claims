@@ -46,6 +46,11 @@ var (
 	ordersClusterFilt string
 	watchUntil        string
 	watchInterval     time.Duration
+
+	teardownReason    string
+	teardownAutoMerge bool
+	teardownWait      bool
+	teardownTimeout   time.Duration
 )
 
 // interactiveMode is the ADR 0001 rule: interactive at a terminal unless
@@ -554,16 +559,20 @@ func pickCluster(cs []orders.Cluster) (string, error) {
 var ordersCmd = &cobra.Command{
 	Use:     "orders",
 	GroupID: groupClaims,
-	Short:   "Follow orders placed through machinery-order-service (list, get, watch, cancel)",
+	Short:   "Follow orders placed through machinery-order-service (list, get, watch, cancel, teardown)",
 	Long: `Follow orders: list the ones you may see (yours and your teams'),
-show one, watch it until it is Ready (or fails), cancel it before the merge.
+show one, watch it until it is Ready (or fails), cancel it before the merge,
+tear it down after the merge.
 
 Phases: Ordered, PROpen (pull request open, waits for a merge), Merged,
-Applied, Building, Ready; or Cancelled, Failed, Deleted.`,
+Applied, Building, Ready; or Cancelled, Failed. A teardown goes on with
+TeardownPROpen (delete-claim pull request open), TearingDown (merged, the
+fleet repo deletes the object) and Deleted.`,
 	Example: `  claims orders list
   claims orders get ord-0123456789ab
   claims orders watch ord-0123456789ab
-  claims orders cancel ord-0123456789ab`,
+  claims orders cancel ord-0123456789ab
+  claims orders teardown ord-0123456789ab --reason "test done" --auto-merge --wait`,
 }
 
 var ordersListCmd = &cobra.Command{
@@ -643,7 +652,9 @@ var ordersWatchCmd = &cobra.Command{
 (Ready, Failed, Cancelled, Deleted), at --until, or after --timeout. Exit
 code 1 when it ends Failed or Cancelled, or times out.
 
-PROpen waits for someone to merge the pull request.`,
+PROpen waits for someone to merge the pull request. While a teardown runs,
+Ready is not final: the watch goes on until Deleted, and fails when the
+teardown is withdrawn or cannot be delivered.`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		exitOn(runOrdersWatch(os.Stdout, args[0]))
@@ -673,6 +684,7 @@ func runOrdersWatch(out io.Writer, id string) error {
 func watchOrder(out io.Writer, c *orders.Client, id, until string, timeout, interval time.Duration, verbose bool) (*orders.Order, error) {
 	deadline := time.Now().Add(timeout)
 	last, lastMsg := "", ""
+	sawTeardown := false
 	for {
 		o, err := c.Get(id)
 		if err != nil {
@@ -690,6 +702,13 @@ func watchOrder(out io.Writer, c *orders.Client, id, until string, timeout, inte
 						line += "  " + o.PRURL() + " (waits for a merge)"
 					}
 				}
+				if ph == "TeardownPROpen" && ph != last && o.TeardownPRURL() != "" {
+					if t := o.Spec.Teardown; t != nil && t.AutoMerge != nil {
+						line += "  " + o.TeardownPRURL() + " (auto-merge once its checks pass)"
+					} else {
+						line += "  " + o.TeardownPRURL() + " (waits for a merge; merging deletes the object)"
+					}
+				}
 				if ph == "Ready" && o.Address() != "" {
 					line += "  address " + o.Address()
 				}
@@ -697,12 +716,17 @@ func watchOrder(out io.Writer, c *orders.Client, id, until string, timeout, inte
 			}
 			last, lastMsg = ph, o.Status.Message
 		}
-		switch {
+		if o.TearingDown() {
+			sawTeardown = true
+		}
+		switch outcome := o.TeardownOutcome(); {
 		case until != "" && o.Phase() == until:
 			return o, nil
 		case o.Phase() == "Failed" || o.Phase() == "Cancelled":
 			return o, fmt.Errorf("order %s ended %s: %s", id, o.Phase(), o.Status.Message)
-		case orders.IsFinal(o.Phase()):
+		case sawTeardown && (outcome == "Withdrawn" || outcome == "Failed"):
+			return o, fmt.Errorf("teardown of order %s %s: %s", id, strings.ToLower(outcome), teardownWhy(o))
+		case orders.IsFinal(o.Phase()) && !o.TearingDown():
 			return o, nil
 		case time.Now().After(deadline):
 			return o, fmt.Errorf("order %s is still %s after %s (claims orders watch %s goes on)", id, o.Phase(), timeout, id)
@@ -748,6 +772,99 @@ func runOrdersCancel(out io.Writer, id string) error {
 	return nil
 }
 
+var ordersTeardownCmd = &cobra.Command{
+	Use:   "teardown <id>",
+	Short: "Remove what a merged order built, through a delete-claim pull request",
+	Long: `Asks machinery-order-service to tear the order down. The service opens a
+delete-claim/<name> pull request that removes the order's file; once it is
+merged, the fleet repo's delete-claim-xr.yaml deletes the object on the
+management cluster. The order goes TeardownPROpen, TearingDown, Deleted.
+
+Whoever may see the order may tear it down; a human merges. --auto-merge lets
+the service merge it once its checks pass, only for the orderer and only
+where a rule of the cluster allows teardowns (claims clusters: "for
+teardown"). --wait follows the order until Deleted.`,
+	Example: `  claims orders teardown ord-0123456789ab --reason "test done"
+  claims orders teardown ord-0123456789ab --auto-merge --wait`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		exitOn(runOrdersTeardown(os.Stdout, args[0]))
+	},
+}
+
+func runOrdersTeardown(out io.Writer, id string) error {
+	if err := checkOutput(); err != nil {
+		return err
+	}
+	svc, err := resolveOrderService()
+	if err != nil {
+		return err
+	}
+	if interactiveMode() {
+		ok := false
+		if err := huh.NewConfirm().Title("Tear down order " + id + "?").
+			Description("A delete-claim pull request removes its file; merging it deletes the object.").
+			Affirmative("Tear it down").Negative("Keep it").Value(&ok).Run(); err != nil {
+			return err
+		}
+		if !ok {
+			return errAborted
+		}
+	}
+	o, err := svc.client.Teardown(id, orders.TeardownRequest{Reason: teardownReason, AutoMerge: teardownAutoMerge})
+	if err != nil {
+		return err
+	}
+	verbose := outputFlag != "json"
+	if verbose {
+		how := "a human merges it"
+		if t := o.Spec.Teardown; t != nil && t.AutoMerge != nil {
+			how = "the service merges it once its checks pass (rule " + t.AutoMerge.Rule + ")"
+		}
+		_, _ = fmt.Fprintf(out, "Teardown requested for %s: a delete-claim pull request follows, %s.\n", id, how)
+	}
+	if teardownWait {
+		o, err = watchOrder(out, svc.client, id, "", teardownTimeout, watchInterval, verbose)
+		if err != nil {
+			return err
+		}
+	}
+	if !verbose {
+		return writeRaw(out, o.Raw)
+	}
+	if !teardownWait {
+		_, _ = fmt.Fprintf(out, "Follow it: claims orders watch %s\n", id)
+	}
+	return nil
+}
+
+// teardownWhy is the condition Teardown's message, else status.message.
+func teardownWhy(o *orders.Order) string {
+	for _, c := range o.Status.Conditions {
+		if c.Type == "Teardown" && c.Message != "" {
+			return c.Message
+		}
+	}
+	return o.Status.Message
+}
+
+// addressRow says whether the address can be used yet: a VM has its address
+// before it is Ready, and ssh is refused until its setup is done.
+func addressRow(o *orders.Order) string {
+	a := o.Address()
+	switch {
+	case a == "":
+		return ""
+	case o.Phase() == "Ready":
+		return a
+	case o.Phase() == "Deleted":
+		return a + " (gone; last seen)"
+	case o.Phase() == "TeardownPROpen" || o.Phase() == "TearingDown":
+		return a + " (being torn down)"
+	}
+	return a + " (not ready yet: phase " + o.Phase() + "; ssh may be refused until Ready)"
+}
+
 // output helpers
 
 func printOrderLine(out io.Writer, o *orders.Order) {
@@ -779,7 +896,19 @@ func printOrder(out io.Writer, o *orders.Order) {
 		row("Auto-merge", "yes, rule "+am.Rule)
 	}
 	row("Pull request", o.PRURL())
-	row("Address", o.Address())
+	if t := o.Spec.Teardown; t != nil {
+		td := "requested by " + firstNonEmpty(t.RequestedBy, "n/a")
+		if t.AutoMerge != nil {
+			td += ", auto-merge rule " + t.AutoMerge.Rule
+		}
+		if outcome := o.TeardownOutcome(); outcome != "" {
+			td += ", " + strings.ToLower(outcome)
+		}
+		row("Teardown", td)
+		row("Teardown reason", t.Reason)
+		row("Teardown PR", o.TeardownPRURL())
+	}
+	row("Address", addressRow(o))
 	row("Created", o.Metadata.CreationTimestamp.UTC().Format(time.RFC3339))
 	_ = tw.Flush()
 	if len(o.Status.History) > 0 {
@@ -849,7 +978,7 @@ func init() {
 		addAPIAuthFlags(c)
 		addOutputFlag(c)
 	}
-	for _, c := range []*cobra.Command{clustersCmd, orderCmd, ordersListCmd, ordersGetCmd, ordersWatchCmd, ordersCancelCmd} {
+	for _, c := range []*cobra.Command{clustersCmd, orderCmd, ordersListCmd, ordersGetCmd, ordersWatchCmd, ordersCancelCmd, ordersTeardownCmd} {
 		addOrderServiceFlags(c)
 		addOutputFlag(c)
 		c.Flags().BoolVar(&orderNonInter, "non-interactive", false, "Never ask (default without a terminal)")
@@ -873,6 +1002,12 @@ func init() {
 	wf.DurationVar(&orderWaitTimeout, "timeout", 60*time.Minute, "Give up after this long")
 	wf.DurationVar(&watchInterval, "interval", 10*time.Second, "Poll interval")
 
-	ordersCmd.AddCommand(ordersListCmd, ordersGetCmd, ordersWatchCmd, ordersCancelCmd)
+	tf := ordersTeardownCmd.Flags()
+	tf.StringVar(&teardownReason, "reason", "", "Why, shown in the pull request")
+	tf.BoolVar(&teardownAutoMerge, "auto-merge", false, "Let the service merge the teardown pull request once its checks pass (orderer only, where a rule allows teardowns)")
+	tf.BoolVar(&teardownWait, "wait", false, "Wait until the order is Deleted (or the teardown is withdrawn)")
+	tf.DurationVar(&teardownTimeout, "timeout", 90*time.Minute, "How long --wait waits (delete-claim-xr.yaml can take 45 minutes)")
+
+	ordersCmd.AddCommand(ordersListCmd, ordersGetCmd, ordersWatchCmd, ordersCancelCmd, ordersTeardownCmd)
 	rootCmd.AddCommand(templatesCmd, clustersCmd, orderCmd, ordersCmd)
 }
