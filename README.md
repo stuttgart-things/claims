@@ -85,7 +85,11 @@ claims order native-vm-labul-proxmox --cluster machinery-labul \
 claims orders watch ord-0123456789ab               # PROpen (waits for a merge) ... Ready; a line per phase and per new message
 claims orders list                                 # yours and your teams'
 claims orders cancel ord-0123456789ab              # before the merge
+claims orders teardown ord-0123456789ab --reason "test done" --wait   # after the merge: delete-claim PR ... Deleted
 ```
+
+`claims orders get` shows the address while the VM is still building as
+`<ip> (not ready yet: phase Building; ssh may be refused until Ready)`.
 
 The pull request waits for a human to merge it. `--auto-merge` asks the service
 to merge it once its checks pass. That works only where a rule of the cluster
@@ -96,6 +100,19 @@ otherwise the order is refused with exit 3 and the reason
 ```bash
 claims order native-vm-labul-proxmox --cluster machinery-labul \
   -p name=demo -p size=small --auto-merge --wait     # merged once checks pass
+```
+
+A teardown (machinery-order-service ADR 0003) opens a `delete-claim/<name>`
+pull request that removes the order's file. Once it is merged, the fleet repo
+deletes the object. Whoever may see the order may tear it down, and a human
+merges. `--auto-merge` works only for the orderer and only where a rule lists
+`actions: [teardown]` (`claims clusters` shows `for order, teardown`).
+`--wait` follows the order until `Deleted` and fails if the teardown is
+withdrawn. While a teardown runs, `claims orders watch` does not stop at
+`Ready`.
+
+```bash
+claims orders teardown ord-0123456789ab --auto-merge --wait
 ```
 
 `-o json` prints the service's objects. Exit codes: 0 ok, 1 error, 2 missing or

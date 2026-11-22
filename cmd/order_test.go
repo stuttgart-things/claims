@@ -17,11 +17,13 @@ import (
 
 // fakeOrderService is machinery-order-service and claim-machinery-api in one.
 type fakeOrderService struct {
-	mu      sync.Mutex
-	created []map[string]any
-	auth    []string
-	gets    int
-	amGets  int
+	mu        sync.Mutex
+	created   []map[string]any
+	auth      []string
+	gets      int
+	amGets    int
+	tdGets    int
+	teardowns []map[string]any
 }
 
 func (f *fakeOrderService) handler(t *testing.T) http.Handler {
@@ -90,6 +92,56 @@ func (f *fakeOrderService) handler(t *testing.T) http.Handler {
 				"conditions": []any{map[string]any{"type": "AutoMerge", "status": "Unknown", "reason": "Waiting", "message": "403 Resource not accessible by integration"}}},
 		})
 	})
+	// ord-td: a teardown that goes through; ord-wd: one that is withdrawn.
+	mux.HandleFunc("POST /api/v1/orders/{id}/teardown", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.mu.Lock()
+		f.teardowns = append(f.teardowns, body)
+		f.mu.Unlock()
+		td := map[string]any{"attempt": 1, "requestedBy": "user:default/persona", "reason": body["reason"]}
+		if body["autoMerge"] == true {
+			td["autoMerge"] = map[string]any{"rule": "personas"}
+		}
+		w.WriteHeader(202)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"name": r.PathValue("id")},
+			"spec":     map[string]any{"teardown": td},
+			"status":   map[string]any{"phase": "Ready"},
+		})
+	})
+	for _, id := range []string{"ord-td", "ord-wd"} {
+		mux.HandleFunc("GET /api/v1/orders/"+id, func(w http.ResponseWriter, r *http.Request) {
+			f.mu.Lock()
+			f.tdGets++
+			n := f.tdGets
+			f.mu.Unlock()
+			type step struct{ phase, outcome, msg string }
+			steps := []step{{"Ready", "", "ready"}, {"TeardownPROpen", "", "teardown pull request https://example.com/pr/9"},
+				{"TearingDown", "", "teardown merged"}, {"Deleted", "Deleted", "torn down"}}
+			if id == "ord-wd" {
+				steps = []step{{"Ready", "", "ready"}, {"TeardownPROpen", "", "teardown pull request https://example.com/pr/9"},
+					{"Ready", "Withdrawn", "teardown withdrawn: pull request closed without a merge"}}
+			}
+			st := steps[min(n-1, len(steps)-1)]
+			status := map[string]any{"phase": st.phase, "message": st.msg, "live": map[string]any{"address": "192.0.2.11"}}
+			if st.phase != "Ready" || st.outcome != "" {
+				status["teardown"] = map[string]any{"attempt": 1, "outcome": st.outcome,
+					"delivery": map[string]any{"pullRequest": map[string]any{"number": 9, "url": "https://example.com/pr/9"}}}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"metadata": map[string]any{"name": id},
+				"spec":     map[string]any{"teardown": map[string]any{"attempt": 1, "requestedBy": "user:default/persona", "autoMerge": map[string]any{"rule": "personas"}}},
+				"status":   status,
+			})
+		})
+	}
+	mux.HandleFunc("GET /api/v1/orders/ord-building", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"name": "ord-building"},
+			"status":   map[string]any{"phase": "Building", "live": map[string]any{"found": true, "address": "192.0.2.12"}},
+		})
+	})
 	mux.HandleFunc("GET /api/v1/orders/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if r.PathValue("id") != "ord-1" {
 			w.WriteHeader(404)
@@ -124,6 +176,7 @@ func setupOrderTest(t *testing.T) *fakeOrderService {
 		orderAutoMerge = false
 		orderWait, orderNonInter, outputFlag = false, true, "table"
 		orderWaitTimeout, watchInterval, watchUntil = time.Minute, time.Millisecond, ""
+		teardownReason, teardownAutoMerge, teardownWait, teardownTimeout = "", false, false, time.Minute
 		ordersURLFlag, orderAPIURLFlag = "", ""
 	}
 	reset()
@@ -326,6 +379,56 @@ func TestOrdersWatchMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "Conditions:\n  AutoMerge=Unknown Waiting: 403 Resource not accessible by integration") {
+		t.Errorf("get:\n%s", out.String())
+	}
+}
+
+func TestOrdersTeardown(t *testing.T) {
+	f := setupOrderTest(t)
+	teardownReason, teardownAutoMerge, teardownWait = "test done", true, true
+	var out bytes.Buffer
+	if err := runOrdersTeardown(&out, "ord-td"); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if len(f.teardowns) != 1 || f.teardowns[0]["reason"] != "test done" || f.teardowns[0]["autoMerge"] != true {
+		t.Errorf("request %v", f.teardowns)
+	}
+	s := out.String()
+	// Ready is not the end while the teardown runs.
+	for _, want := range []string{"rule personas", "TeardownPROpen", "https://example.com/pr/9 (auto-merge once its checks pass)", "TearingDown", "Deleted"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("output misses %q:\n%s", want, s)
+		}
+	}
+
+	out.Reset()
+	if err := runOrdersGet(&out, "ord-td"); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Teardown:", "auto-merge rule personas, deleted", "Teardown PR:", "192.0.2.11 (gone; last seen)"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("get misses %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestOrdersTeardownWithdrawn(t *testing.T) {
+	setupOrderTest(t)
+	teardownWait = true
+	var out bytes.Buffer
+	err := runOrdersTeardown(&out, "ord-wd")
+	if err == nil || !strings.Contains(err.Error(), "teardown of order ord-wd withdrawn") {
+		t.Fatalf("want withdrawn, got %v\n%s", err, out.String())
+	}
+}
+
+func TestOrdersGetAddressNotReady(t *testing.T) {
+	setupOrderTest(t)
+	var out bytes.Buffer
+	if err := runOrdersGet(&out, "ord-building"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "192.0.2.12 (not ready yet: phase Building; ssh may be refused until Ready)") {
 		t.Errorf("get:\n%s", out.String())
 	}
 }

@@ -71,6 +71,14 @@ type Order struct {
 		AutoMerge *struct {
 			Rule string `json:"rule"`
 		} `json:"autoMerge,omitempty"`
+		Teardown *struct {
+			Attempt     int    `json:"attempt"`
+			RequestedBy string `json:"requestedBy,omitempty"`
+			Reason      string `json:"reason,omitempty"`
+			AutoMerge   *struct {
+				Rule string `json:"rule"`
+			} `json:"autoMerge,omitempty"`
+		} `json:"teardown,omitempty"`
 	} `json:"spec"`
 	Status struct {
 		Phase    string `json:"phase,omitempty"`
@@ -82,6 +90,17 @@ type Order struct {
 				State  string `json:"state"`
 			} `json:"pullRequest,omitempty"`
 		} `json:"delivery,omitempty"`
+		Teardown *struct {
+			Attempt  int    `json:"attempt"`
+			Outcome  string `json:"outcome,omitempty"`
+			Delivery *struct {
+				PullRequest *struct {
+					Number int    `json:"number"`
+					URL    string `json:"url"`
+					State  string `json:"state"`
+				} `json:"pullRequest,omitempty"`
+			} `json:"delivery,omitempty"`
+		} `json:"teardown,omitempty"`
 		Live *struct {
 			Found         bool   `json:"found"`
 			Ready         bool   `json:"ready"`
@@ -121,6 +140,30 @@ func (o *Order) PRURL() string {
 		return d.PullRequest.URL
 	}
 	return ""
+}
+
+// TeardownPRURL is the teardown pull request's URL, "" before there is one.
+func (o *Order) TeardownPRURL() string {
+	if t := o.Status.Teardown; t != nil && t.Delivery != nil && t.Delivery.PullRequest != nil {
+		return t.Delivery.PullRequest.URL
+	}
+	return ""
+}
+
+// TeardownOutcome is the outcome of the current teardown request: "" while
+// it runs or when none was asked for, else Withdrawn, Failed or Deleted.
+func (o *Order) TeardownOutcome() string {
+	t, st := o.Spec.Teardown, o.Status.Teardown
+	if t == nil || st == nil || st.Attempt != t.Attempt {
+		return ""
+	}
+	return st.Outcome
+}
+
+// TearingDown reports whether a teardown was asked for and has no outcome
+// yet, so Ready is not where the order stops.
+func (o *Order) TearingDown() bool {
+	return o.Spec.Teardown != nil && o.TeardownOutcome() == ""
 }
 
 // Address is what machinery reports for the live resource (a VM's IP).
@@ -165,6 +208,8 @@ type AutoMergeRule struct {
 	Groups     []string            `json:"groups,omitempty"`
 	Templates  []string            `json:"templates,omitempty"`
 	Parameters map[string][]string `json:"parameters,omitempty"`
+	// Actions: order, teardown; empty = order only.
+	Actions []string `json:"actions,omitempty"`
 }
 
 // String is the rule in one line, e.g.
@@ -181,6 +226,9 @@ func (r AutoMergeRule) String() string {
 	sort.Strings(keys)
 	for _, k := range keys {
 		parts = append(parts, k+"="+strings.Join(r.Parameters[k], "|"))
+	}
+	if len(r.Actions) > 0 {
+		parts = append(parts, "for "+strings.Join(r.Actions, ", "))
 	}
 	return r.Name + ": " + strings.Join(parts, "; ")
 }
@@ -275,6 +323,22 @@ func (c *Client) List(opt ListOptions) ([]*Order, error) {
 // Get reads one order.
 func (c *Client) Get(id string) (*Order, error) {
 	raw, err := c.do(http.MethodGet, "/api/v1/orders/"+url.PathEscape(id), nil, http.StatusOK)
+	if err != nil {
+		return nil, err
+	}
+	return decodeOrder(raw)
+}
+
+// TeardownRequest is the body of POST /api/v1/orders/{id}/teardown.
+type TeardownRequest struct {
+	Reason    string `json:"reason,omitempty"`
+	AutoMerge bool   `json:"autoMerge,omitempty"`
+}
+
+// Teardown asks to remove what a merged order built: the service opens a
+// delete-claim pull request (machinery-order-service ADR 0003).
+func (c *Client) Teardown(id string, req TeardownRequest) (*Order, error) {
+	raw, err := c.do(http.MethodPost, "/api/v1/orders/"+url.PathEscape(id)+"/teardown", req, http.StatusAccepted)
 	if err != nil {
 		return nil, err
 	}
