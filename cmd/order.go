@@ -159,19 +159,25 @@ func runTemplates(out io.Writer, args []string) error {
 	if err != nil {
 		return err
 	}
-	list, err := newAPIClient(splitAPIURLs(target.URL)[0], auth).FetchTemplates()
+	client := newAPIClient(splitAPIURLs(target.URL)[0], auth)
+	if len(args) == 1 {
+		// The detail, not the list: with a token it carries the owner
+		// values the caller may use (claim-machinery-api#147).
+		t, err := client.FetchTemplate(args[0])
+		var apiErr *templates.APIError
+		if errors.As(err, &apiErr) && apiErr.Status == 404 {
+			return &templates.APIError{Status: 404, Message: fmt.Sprintf("no template %q (list them: claims templates)", args[0])}
+		}
+		if err != nil {
+			return err
+		}
+		return printTemplate(out, t)
+	}
+	list, err := client.FetchTemplates()
 	if err != nil {
 		return err
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].Metadata.Name < list[j].Metadata.Name })
-	if len(args) == 1 {
-		for i := range list {
-			if list[i].Metadata.Name == args[0] {
-				return printTemplate(out, &list[i])
-			}
-		}
-		return &templates.APIError{Status: 404, Message: fmt.Sprintf("no template %q (list them: claims templates)", args[0])}
-	}
 	if outputFlag == "json" {
 		return writeJSON(out, list)
 	}
@@ -211,6 +217,15 @@ func printTemplate(out io.Writer, t *templates.ClaimTemplate) error {
 		allowed := strings.Join(p.Enum, ", ")
 		if allowed == "" && p.Pattern != "" {
 			allowed = "pattern " + p.Pattern
+		}
+		if p.Identity == "owner" && (len(p.AllowedOwners) > 0 || p.AnyOwner) {
+			allowed = strings.Join(p.AllowedOwners, ", ")
+			if p.AnyOwner {
+				allowed += " (admin: any)"
+			}
+			if def == "" {
+				def = "(your login)"
+			}
 		}
 		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", p.Name, req, def, allowed, showWhenText(p.ShowWhen))
 	}

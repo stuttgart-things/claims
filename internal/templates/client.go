@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -73,6 +74,43 @@ func (c *Client) FetchTemplates() ([]ClaimTemplate, error) {
 	return list.Items, nil
 }
 
+// FetchTemplate retrieves one template. With a token, claim-machinery-api
+// fills in the owner values the caller may use (#147).
+func (c *Client) FetchTemplate(name string) (*ClaimTemplate, error) {
+	resp, err := c.HTTPClient.Get(c.BaseURL + "/api/v1/claim-templates/" + url.PathEscape(name))
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, statusError(resp)
+	}
+	var t ClaimTemplate
+	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return &t, nil
+}
+
+// Whoami asks the API who the token is and which groups its roles map to.
+// A 404 (*APIError) means order auth is off or the API predates the
+// endpoint.
+func (c *Client) Whoami() (*Whoami, error) {
+	resp, err := c.HTTPClient.Get(c.BaseURL + "/api/v1/whoami")
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, statusError(resp)
+	}
+	var w Whoami
+	if err := json.NewDecoder(resp.Body).Decode(&w); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return &w, nil
+}
+
 // RenderTemplate calls the API to render a template with the given parameters
 func (c *Client) RenderTemplate(templateName string, params map[string]interface{}) (string, error) {
 	reqBody := OrderRequest{Parameters: params}
@@ -81,11 +119,11 @@ func (c *Client) RenderTemplate(templateName string, params map[string]interface
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/api/v1/claim-templates/%s/order", c.BaseURL, templateName)
+	orderURL := fmt.Sprintf("%s/api/v1/claim-templates/%s/order", c.BaseURL, templateName)
 	if c.RenderOnly {
-		url += "?notify=false"
+		orderURL += "?notify=false"
 	}
-	resp, err := c.HTTPClient.Post(url, "application/json", bytes.NewReader(jsonData))
+	resp, err := c.HTTPClient.Post(orderURL, "application/json", bytes.NewReader(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("HTTP request failed: %w", err)
 	}

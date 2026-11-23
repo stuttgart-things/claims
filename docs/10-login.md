@@ -51,6 +51,10 @@ claims logout --api-url https://claims.example.com/claims   # or: claims logout 
 audience, the expiry and the user reference claim-machinery-api stamps into
 `requested_by` (`user:default/<preferred_username before @>`). It warns when the
 access token is not a JWT, because claim-machinery-api only accepts JWTs.
+It also asks the API (`GET /api/v1/whoami`) for the groups the roles map to
+and prints the owner values they allow (`Owners:`), so an order for a team
+uses `-p owner=group:default/<team>`. `claims templates <name>` shows the
+same list in the `ALLOWED` column of the `owner` parameter (claim-machinery-api#147).
 
 `claims` never sets `requested_by` itself: with auth on, the API binds
 parameters marked `identity: user` to the login and checks `identity: owner`
@@ -91,7 +95,7 @@ Once per lab ZITADEL, in the project that claim-machinery-api accepts (its
 | Issuer without device flow | `issuer … offers no device_authorization_endpoint` |
 | Refresh token expired/revoked | `login for <api> expired or was revoked, run claims login --api-url <api> again: invalid_grant` |
 | API answers 401 | hint to run `claims login` or set `CLAIM_API_TOKEN` / `CLAIM_API_OIDC_*` |
-| API answers 403 | missing order role or owner outside your groups; `claims whoami` shows the token's roles |
+| API answers 403 | missing order role or owner outside your groups; `claims whoami` shows the roles, groups and allowed owners |
 
 Token values are never printed or logged; the credentials file is created with
 mode 0600 in a 0700 directory.

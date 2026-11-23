@@ -67,6 +67,29 @@ type Parameter struct {
 	// e.g. {use_case: {dev: [large, xlarge]}}; a value not listed leaves the
 	// enum as it is. See internal/conditions.
 	EnumWhen map[string]map[string][]string `json:"enumWhen,omitempty"`
+
+	// Identity binds the parameter to the orderer when the API has order
+	// auth on (claim-machinery-api#122): "user" or "owner".
+	Identity string `json:"identity,omitempty"`
+
+	// AllowedOwners and AnyOwner are what the caller may set an "owner"
+	// parameter to: its user ref and groups, and whether any value goes
+	// (admin). The template detail sets them for an authenticated request
+	// (claim-machinery-api#147).
+	AllowedOwners []string `json:"allowedOwners,omitempty"`
+	AnyOwner      bool     `json:"anyOwner,omitempty"`
+}
+
+// Whoami is the caller as claim-machinery-api sees it
+// (GET /api/v1/whoami, claim-machinery-api#147).
+type Whoami struct {
+	Name     string   `json:"name"`
+	Subject  string   `json:"subject,omitempty"`
+	UserRef  string   `json:"userRef,omitempty"`
+	Roles    []string `json:"roles"`
+	Groups   []string `json:"groups"`
+	Admin    bool     `json:"admin"`
+	MayOrder bool     `json:"mayOrder"`
 }
 
 // ClaimTemplateList is a list of claim templates
