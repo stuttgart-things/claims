@@ -1,3 +1,10 @@
+# [0.31.0](https://github.com/stuttgart-things/claims/compare/v0.30.1...v0.31.0) (2026-11-23)
+
+
+### Features
+
+* **owner:** show the allowed owner values in templates and whoami ([#137](https://github.com/stuttgart-things/claims/issues/137)) ([fc77773](https://github.com/stuttgart-things/claims/commit/fc777734f9bb310d222617e59eafa9c5b91b808b)), closes [stuttgart-things/claim-machinery-api#147](https://github.com/stuttgart-things/claim-machinery-api/issues/147) [stuttgart-things/claim-machinery-api#148](https://github.com/stuttgart-things/claim-machinery-api/issues/148) [#148](https://github.com/stuttgart-things/claims/issues/148)
+
 ## [0.30.1](https://github.com/stuttgart-things/claims/compare/v0.30.0...v0.30.1) (2026-11-23)
 
 
