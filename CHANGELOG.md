@@ -1,3 +1,10 @@
+## [0.30.1](https://github.com/stuttgart-things/claims/compare/v0.30.0...v0.30.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **deps:** build with go1.27.4 and golang.org/x/net v0.63.0 ([#136](https://github.com/stuttgart-things/claims/issues/136)) ([4a3dad5](https://github.com/stuttgart-things/claims/commit/4a3dad51ce1900fe56409639a54473b6f9fbecd4))
+
 # [0.30.0](https://github.com/stuttgart-things/claims/compare/v0.29.2...v0.30.0) (2026-11-22)
 
 
