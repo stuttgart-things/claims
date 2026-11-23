@@ -264,7 +264,7 @@ func StatusHint(statusCode int) string {
 			EnvToken, EnvOIDCTokenURL, EnvOIDCClientID, EnvOIDCClientSecret, EnvOIDCScope)
 	case http.StatusForbidden:
 		return "claim-machinery-api accepted the token but denied the request " +
-			"(missing order role, or an owner outside your groups?): `claims whoami` shows the roles in your token"
+			"(missing order role, or an owner outside your groups?): `claims whoami` shows your roles and groups, `claims templates <name>` the owner values you may use"
 	default:
 		return ""
 	}

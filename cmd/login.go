@@ -15,6 +15,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/stuttgart-things/claims/internal/apiauth"
+	"github.com/stuttgart-things/claims/internal/templates"
 )
 
 var (
@@ -66,10 +67,11 @@ var logoutCmd = &cobra.Command{
 var whoamiCmd = &cobra.Command{
 	Use:     "whoami",
 	GroupID: groupAuth,
-	Short:   "Show the identity and roles claims sends to claim-machinery-api",
+	Short:   "Show the identity, roles and groups claims sends to claim-machinery-api",
 	Long: `Show who claims authenticates as towards an API URL: the user, the
-roles and groups in the token, and the user reference claim-machinery-api
-stamps into requested_by. Uses the same precedence as render: --api-token /
+roles in the token, the user reference claim-machinery-api stamps into
+requested_by, and -- asked from the API -- the groups the roles map to and
+the owner values they allow (owner=<one of them> on an order). Uses the same precedence as render: --api-token /
 $` + apiauth.EnvToken + `, then OIDC client credentials, then the cached login.`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -262,7 +264,42 @@ func runWhoami(ctx context.Context, out io.Writer, apiURL string, explicit apiau
 	}
 	_, _ = fmt.Fprintf(out, "API:        %s\n", apiURL)
 	printIdentity(ctx, out, auth.Mode(), tok, cred, hc)
+	printAPIIdentity(out, templates.NewClientWithAuth(apiURL, auth))
 	return nil
+}
+
+// printAPIIdentity adds what claim-machinery-api makes of the token
+// (claim-machinery-api#147): the groups its roles map to, the owner values
+// they allow, and whether it may order at all. The role->group mapping
+// stays on the server.
+func printAPIIdentity(out io.Writer, c *templates.Client) {
+	row := func(k, v string) { _, _ = fmt.Fprintf(out, "%-11s %s\n", k+":", v) }
+	w, err := c.Whoami()
+	if err != nil {
+		var apiErr *templates.APIError
+		switch {
+		case errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound:
+			row("Groups", "not listed by the API (order auth off, or claim-machinery-api older than the whoami endpoint)")
+		case errors.As(err, &apiErr):
+			row("Groups", fmt.Sprintf("the API answered %d", apiErr.Status))
+		default:
+			row("Groups", fmt.Sprintf("the API did not answer: %v", err))
+		}
+		return
+	}
+	row("Groups", orNoneText(w.Groups, "(none)"))
+	owners := w.Groups
+	if w.UserRef != "" {
+		owners = append([]string{w.UserRef}, w.Groups...)
+	}
+	o := strings.Join(owners, ", ")
+	if w.Admin {
+		o += " (admin: any)"
+	}
+	row("Owners", o)
+	if !w.MayOrder {
+		row("Order", "not allowed: the API's order roles exclude this login")
+	}
 }
 
 // printIdentity prints what the token says about its holder. The token
@@ -299,7 +336,7 @@ func printIdentity(ctx context.Context, out io.Writer, mode apiauth.Mode, token 
 	row("User ref", id.UserRef())
 	row("Roles", orNone(id.Roles))
 	if len(id.Groups) > 0 {
-		row("Groups", strings.Join(id.Groups, ", "))
+		row("IdP groups", strings.Join(id.Groups, ", "))
 	}
 	row("Audience", strings.Join(id.Audience, ", "))
 	if !id.Expiry.IsZero() {
@@ -311,9 +348,11 @@ func printIdentity(ctx context.Context, out io.Writer, mode apiauth.Mode, token 
 	}
 }
 
-func orNone(v []string) string {
+func orNone(v []string) string { return orNoneText(v, "(none in the token)") }
+
+func orNoneText(v []string, none string) string {
 	if len(v) == 0 {
-		return "(none in the token)"
+		return none
 	}
 	return strings.Join(v, ", ")
 }

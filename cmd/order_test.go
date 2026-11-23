@@ -38,6 +38,23 @@ func (f *fakeOrderService) handler(t *testing.T) http.Handler {
 			}},
 		}}})
 	})
+	mux.HandleFunc("GET /api/v1/claim-templates/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("name") != "vm" {
+			w.WriteHeader(404)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "template not found"})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"name": "vm", "title": "A VM"},
+			"spec": map[string]any{"type": "vm", "parameters": []any{
+				map[string]any{"name": "name", "type": "string", "required": true},
+				map[string]any{"name": "size", "type": "string", "required": true, "default": "small", "enum": []string{"small", "large"}},
+				map[string]any{"name": "disk", "type": "string", "showWhen": map[string]any{"size": []string{"large"}}},
+				map[string]any{"name": "owner", "type": "string", "identity": "owner",
+					"allowedOwners": []string{"user:default/jane", "group:default/ai-personas"}},
+			}},
+		})
+	})
 	mux.HandleFunc("GET /api/v1/management-clusters", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"name": "mc-a", "lab": "lab-a", "cordoned": false,
 			"autoMerge": map[string]any{"rules": []any{map[string]any{"name": "personas", "groups": []string{"group:default/ai-personas"},
@@ -269,6 +286,13 @@ func TestOrderWaitAndOrders(t *testing.T) {
 	out.Reset()
 	if err := runTemplates(&out, []string{"vm"}); err != nil || !strings.Contains(out.String(), "size=large") {
 		t.Errorf("templates vm: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "(your login)  user:default/jane, group:default/ai-personas") {
+		t.Errorf("templates vm lacks the owner values:\n%s", out.String())
+	}
+	err = runTemplates(&bytes.Buffer{}, []string{"nope"})
+	if err == nil || !strings.Contains(err.Error(), `no template "nope"`) || exitCode(err) != exitCodeNotFound {
+		t.Errorf("unknown template: %v (exit %d)", err, exitCode(err))
 	}
 }
 

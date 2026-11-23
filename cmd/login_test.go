@@ -66,6 +66,10 @@ func templateAPI(t *testing.T) (*httptest.Server, func() []string) {
 		mu.Lock()
 		seen = append(seen, r.Header.Get("Authorization"))
 		mu.Unlock()
+		if r.URL.Path == "/api/v1/whoami" {
+			_, _ = w.Write([]byte(`{"kind":"Identity","userRef":"user:default/jane","groups":["group:default/ai-personas","group:default/guests"],"mayOrder":true}`))
+			return
+		}
 		_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"ClaimTemplateList","items":[]}`))
 	}))
 	t.Cleanup(srv.Close)
@@ -140,7 +144,9 @@ func TestLoginWhoamiLogout(t *testing.T) {
 	if err := runWhoami(context.Background(), &out, api.URL, apiauth.Config{}, store); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Auth:       login", "jane@example.com", "user:default/jane", "backstage-developer", "proj"} {
+	for _, want := range []string{"Auth:       login", "jane@example.com", "user:default/jane", "backstage-developer", "proj",
+		"Groups:     group:default/ai-personas, group:default/guests",
+		"Owners:     user:default/jane, group:default/ai-personas, group:default/guests"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("whoami output lacks %q:\n%s", want, out.String())
 		}
