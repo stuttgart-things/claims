@@ -91,6 +91,7 @@ const (
 	exitCodeUsage    = 2 // a missing or invalid flag
 	exitCodeDenied   = 3 // the server said 401/403
 	exitCodeNotFound = 4 // the server said 404
+	// exitCodeDrift (5, claims secret diff: git and Vault differ) is in secret_diff.go.
 )
 
 // usageError is a missing or invalid flag; its message names the flag.
@@ -105,6 +106,10 @@ func exitCode(err error) int {
 	var ue *usageError
 	if errors.As(err, &ue) {
 		return exitCodeUsage
+	}
+	var de *driftError
+	if errors.As(err, &de) {
+		return exitCodeDrift
 	}
 	var ae *templates.APIError
 	if errors.As(err, &ae) {

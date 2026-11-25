@@ -37,6 +37,18 @@ type Endpoint struct {
 type Config struct {
 	Current   string              `yaml:"current,omitempty"`
 	Endpoints map[string]Endpoint `yaml:"endpoints,omitempty"`
+	// Vaults are the labs' Vaults for `claims secret` (claims#122), keyed by
+	// lab: the <lab> of secrets/<lab>/<mount>/<path>.enc.yaml.
+	CurrentVault string           `yaml:"current-vault,omitempty"`
+	Vaults       map[string]Vault `yaml:"vaults,omitempty"`
+}
+
+// Vault is the Vault of one lab.
+type Vault struct {
+	Addr         string `yaml:"addr"`
+	CAFile       string `yaml:"ca-file,omitempty"`
+	Auth         string `yaml:"auth,omitempty"`          // token | approle ("" = token, else approle if VAULT_ROLE_ID is set)
+	AppRoleMount string `yaml:"approle-mount,omitempty"` // default approle
 }
 
 // namePattern keeps names usable as flag values and file keys.
@@ -56,7 +68,7 @@ func DefaultPath() (string, error) {
 
 // Load reads path; a missing file is an empty config.
 func Load(path string) (*Config, error) {
-	c := &Config{Endpoints: map[string]Endpoint{}}
+	c := &Config{Endpoints: map[string]Endpoint{}, Vaults: map[string]Vault{}}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return c, nil
@@ -69,6 +81,9 @@ func Load(path string) (*Config, error) {
 	}
 	if c.Endpoints == nil {
 		c.Endpoints = map[string]Endpoint{}
+	}
+	if c.Vaults == nil {
+		c.Vaults = map[string]Vault{}
 	}
 	return c, nil
 }
@@ -165,4 +180,69 @@ func (c *Config) unknown(name string) error {
 		return fmt.Errorf("unknown endpoint %q: none configured (add one with `claims endpoint add <name> <url>`)", name)
 	}
 	return fmt.Errorf("unknown endpoint %q (configured: %s)", name, strings.Join(c.Names(), ", "))
+}
+
+// AddVault adds or replaces the Vault of lab.
+func (c *Config) AddVault(lab string, v Vault) error {
+	if !namePattern.MatchString(lab) {
+		return fmt.Errorf("lab name %q: use letters, digits, '.', '_' and '-'", lab)
+	}
+	v.Addr = NormalizeURL(v.Addr)
+	if !strings.HasPrefix(v.Addr, "http://") && !strings.HasPrefix(v.Addr, "https://") {
+		return fmt.Errorf("vault address %q must start with http:// or https://", v.Addr)
+	}
+	switch v.Auth {
+	case "", "token", "approle":
+	default:
+		return fmt.Errorf("vault auth %q: use token or approle", v.Auth)
+	}
+	if c.Vaults == nil {
+		c.Vaults = map[string]Vault{}
+	}
+	c.Vaults[lab] = v
+	return nil
+}
+
+// RemoveVault deletes the Vault of lab.
+func (c *Config) RemoveVault(lab string) error {
+	if _, ok := c.Vaults[lab]; !ok {
+		return c.unknownVault(lab)
+	}
+	delete(c.Vaults, lab)
+	if c.CurrentVault == lab {
+		c.CurrentVault = ""
+	}
+	return nil
+}
+
+// UseVault makes lab the current lab of `claims secret`.
+func (c *Config) UseVault(lab string) error {
+	if _, ok := c.Vaults[lab]; !ok {
+		return c.unknownVault(lab)
+	}
+	c.CurrentVault = lab
+	return nil
+}
+
+// GetVault returns the Vault of lab.
+func (c *Config) GetVault(lab string) (Vault, bool) {
+	v, ok := c.Vaults[lab]
+	return v, ok
+}
+
+// VaultNames lists the labs with a Vault, sorted.
+func (c *Config) VaultNames() []string {
+	names := make([]string, 0, len(c.Vaults))
+	for n := range c.Vaults {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (c *Config) unknownVault(lab string) error {
+	if len(c.Vaults) == 0 {
+		return fmt.Errorf("no Vault configured for lab %q (add one with `claims secret vault add <lab> <addr>`)", lab)
+	}
+	return fmt.Errorf("no Vault configured for lab %q (configured: %s)", lab, strings.Join(c.VaultNames(), ", "))
 }

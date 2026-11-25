@@ -1,0 +1,23 @@
+# Example root .sops.yaml for the fleet repository (stuttgart-things/stuttgart-things).
+# NOT used by this repository: copy it to the root of the fleet repository and
+# replace the placeholder recipients (claims#122, crossplane-configurations#572).
+#
+# One rule per lab: the lab's age recipient plus the offline recovery recipient
+# on every file. sops applies the FIRST matching rule, so keep these rules
+# above any broader rule (e.g. the existing secrets/.sops.yaml rules).
+# claims reads this file, never guesses recipients, and stops when no rule
+# matches a target.
+creation_rules:
+  # secrets/labul/<mount>/<path>.enc.yaml  <=>  <mount>/<path> in the LabUL Vault
+  - path_regex: ^secrets/labul/.*\.enc\.yaml$
+    encrypted_regex: ^(data|stringData)$
+    age: >-
+      age1labul0000000000000000000000000000000000000000000000000000placeholder,
+      age1recovery000000000000000000000000000000000000000000000000placeholder
+
+  # secrets/labda/<mount>/<path>.enc.yaml  <=>  <mount>/<path> in the LabDA Vault
+  - path_regex: ^secrets/labda/.*\.enc\.yaml$
+    encrypted_regex: ^(data|stringData)$
+    age: >-
+      age1labda0000000000000000000000000000000000000000000000000000placeholder,
+      age1recovery000000000000000000000000000000000000000000000000placeholder

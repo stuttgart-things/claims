@@ -18,7 +18,7 @@ Every command has two faces, and both are first-class:
    - **never prompts.** A missing value is an error that names the flag (or env var) that supplies it, e.g. `--cluster is required (list them: claims clusters)`.
    - **everything a form asks is a flag**, and every list a picker offers is a command (`claims templates`, `claims clusters`, `claims orders`).
    - **`-o json`** on every command that returns data; the JSON shape is documented and stable (fields are added, not renamed). The default stays a human table or text.
-   - **exit codes:** 0 ok, 1 error, 2 usage error (missing/invalid flag), 3 denied by the server (401/403), 4 not found. Errors go to stderr, data to stdout.
+   - **exit codes:** 0 ok, 1 error, 2 usage error (missing/invalid flag), 3 denied by the server (401/403), 4 not found, 5 drift (`claims secret diff`). Errors go to stderr, data to stdout.
    - **server messages pass through:** a 403 shows the server's reason (template `orderRoles`, foreign owner), not just the status.
    - **`--help` is the manual:** each command's help says what it does, which flags are required in programmatic mode, one example, and where the result goes (PR, order ID, file).
 3. **Same auth on both sides:** cached `claims login`, `--api-token` / `CLAIM_API_TOKEN`, or client credentials (`--api-oidc-*`).

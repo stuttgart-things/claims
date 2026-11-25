@@ -96,6 +96,9 @@ func runDoctor(ctx context.Context, out io.Writer) error {
 			})
 		}
 	}
+	if doctorSecretsWanted() {
+		checkSecrets(ctx, r, doctorFlags.dir)
+	}
 	r.Print(out, true)
 	if n := r.Problems(); n > 0 {
 		return fmt.Errorf("%d check(s) failed", n)
