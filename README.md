@@ -52,7 +52,8 @@ go build -o claims .
 | `claims logout` | Forget the cached login for an API URL |
 | `claims whoami` | Show the user, roles and groups claims sends to the API |
 | `claims endpoint` | Named API endpoints: `list`, `use`, `add`, `remove`, `current` |
-| `claims doctor` | Check API endpoint, login and git/GitHub credentials (changes nothing) |
+| `claims secret` | SOPS secrets in git and their Vault entries: `path`, `sops view/set/unset/rotate`, `diff`, `sync`, `vault` ([docs](docs/13-secrets.md)) |
+| `claims doctor` | Check API endpoint, login and git/GitHub credentials (changes nothing); `--lab`/`--secret` adds sops, age key, `.sops.yaml` and Vault |
 | `claims version` | Print version information |
 
 ### order: through machinery-order-service, without a git token
@@ -722,6 +723,29 @@ claims change sbx-labul-vm --retry --dry-run   # runID read from main
 - A checkout still wins when there is one. It may be behind `main` or on another branch; then `git pull` first, or run claims outside it.
 - `claims delete` still needs a checkout: it writes and commits the removal itself.
 
+### secret: SOPS in git, Vault at runtime
+
+SOPS files in the fleet repository are the master of declared secrets, Vault is the
+runtime (crossplane-configurations#572). The file path is the Vault path, 1:1:
+
+```
+secrets/<lab>/<mount>/<path>.enc.yaml   <=>   <mount>/<path> (KV v2) in the Vault of <lab>
+```
+
+```bash
+claims secret vault add labul https://vault.labul.example.com   # once per lab
+claims secret path kv/machinery-dev/argocd-oidc --lab labul      # -> secrets/labul/kv/machinery-dev/argocd-oidc.enc.yaml
+claims secret sops view secrets/labul/kv/machinery-dev/argocd-oidc.enc.yaml   # keys, lengths, sha256 prefixes
+claims secret sops set kv/app/db --lab labul password --generate --length 40
+claims secret diff secrets/labul/kv/                             # exit 5 on drift
+claims secret sync vault-to-sops kv/machinery-dev/ --lab labul --create-pr
+```
+
+Recipients come only from the creation rules of the repository's root `.sops.yaml`
+(one per lab plus the offline recovery recipient; example in
+[`examples/fleet-secrets/`](examples/fleet-secrets/)). Values never touch the disk in
+plaintext and are printed only with `--reveal`. Details: [docs/13-secrets.md](docs/13-secrets.md).
+
 ### encrypt
 
 Create SOPS-encrypted Kubernetes Secrets using age encryption. Fetches a template from the API, collects secret values, generates a K8s Secret YAML, encrypts it with SOPS, and optionally commits via Git PR.
@@ -978,6 +1002,7 @@ task test-gitops
 │   ├── encrypt_noninteractive.go # Non-interactive encrypt
 │   ├── encrypt_git.go         # Git operations for encrypt
 │   ├── encrypt_types.go       # Encrypt type definitions
+│   ├── secret*.go             # claims secret: path, sops view/set/unset/rotate, diff, sync, vault, doctor checks
 │   ├── list.go                # List command
 │   ├── version.go             # Version command
 │   └── logo.go                # ASCII logo rendering
@@ -1001,7 +1026,13 @@ task test-gitops
 │   ├── sops/
 │   │   ├── sops.go            # SOPS binary interaction (check, encrypt)
 │   │   ├── secret.go          # K8s Secret YAML generation
+│   │   ├── file.go            # decrypt/encrypt via stdin + --filename-override, updatekeys, rotate
+│   │   ├── config.go          # .sops.yaml creation rules (recipients per path)
+│   │   ├── manifest.go        # Secret manifests (stringData), hashes, ENC[] check
+│   │   ├── age.go             # age identities sops would use (for doctor)
 │   │   └── sops_test.go       # SOPS unit tests
+│   ├── secretpath/            # secrets/<lab>/<mount>/<path>.enc.yaml <=> Vault path, Secret name, denylist
+│   ├── vault/                 # Vault KV v2 client (token, AppRole), vaulttest fake
 │   ├── registry/
 │   │   ├── registry.go        # Registry CRUD operations
 │   │   └── types.go           # Registry type definitions
