@@ -1,3 +1,10 @@
+## [0.32.1](https://github.com/stuttgart-things/claims/compare/v0.32.0...v0.32.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **secret:** infer the recovery recipient from the per-lab rules only ([#140](https://github.com/stuttgart-things/claims/issues/140)) ([b974ab0](https://github.com/stuttgart-things/claims/commit/b974ab0e98ffdee1b6b5105e60d131c4b1b743f6))
+
 # [0.32.0](https://github.com/stuttgart-things/claims/compare/v0.31.0...v0.32.0) (2026-11-25)
 
 
