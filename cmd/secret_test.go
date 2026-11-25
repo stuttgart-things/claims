@@ -288,7 +288,12 @@ func TestSecretSetViewUnset(t *testing.T) {
 		t.Fatalf("emptying the file: %v", err)
 	}
 
-	// rotate keeps the values.
+	// rotate keeps the values and leaves files outside the layout alone
+	// (the flat bootstrap credentials secrets/*.enc.yaml).
+	flat := filepath.Join(f.root, "secrets", "bootstrap.enc.yaml")
+	if err := os.WriteFile(flat, []byte("not touched\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	before := f.read(t, rel)
 	out.Reset()
 	if err := runSecretRotate(ctx, []string{"secrets/labul/"}, &out); err != nil {
@@ -296,6 +301,13 @@ func TestSecretSetViewUnset(t *testing.T) {
 	}
 	if !sops.SameValues(before, f.read(t, rel)) || !strings.Contains(out.String(), "Rotated "+rel) {
 		t.Fatalf("rotate:\n%s", out.String())
+	}
+	out.Reset()
+	if err := runSecretRotate(ctx, []string{"secrets/"}, &out); err != nil {
+		t.Fatalf("rotate secrets/: %v", err)
+	}
+	if b, _ := os.ReadFile(flat); string(b) != "not touched\n" || strings.Contains(out.String(), "bootstrap") {
+		t.Fatalf("flat file touched:\n%s", out.String())
 	}
 	noPlaintextOnDisk(t, f.root)
 }

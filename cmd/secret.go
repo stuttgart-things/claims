@@ -261,6 +261,7 @@ func gitSecretsBelow(root, arg string) ([]secretpath.Ref, error) {
 		return nil, fmt.Errorf("%s is not a directory of the checkout", rel)
 	}
 	var out []secretpath.Ref
+	outside := 0
 	err = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(p, secretpath.Suffix) {
 			return err
@@ -269,15 +270,21 @@ func gitSecretsBelow(root, arg string) ([]secretpath.Ref, error) {
 		if err != nil {
 			return err
 		}
+		// Files outside secrets/<lab>/<mount>/... (e.g. the flat bootstrap
+		// credentials secrets/*.enc.yaml) are not part of the layout: left alone.
 		ref, err := secretpath.ParseFile(filepath.ToSlash(r))
 		if err != nil {
-			return err
+			outside++
+			return nil
 		}
 		if secretOpts.lab == "" || ref.Lab == secretOpts.lab {
 			out = append(out, ref)
 		}
 		return nil
 	})
+	if outside > 0 {
+		warnf(fmt.Sprintf("%s below %s outside secrets/<lab>/<mount>/ left alone (not part of the layout)", plural(outside, "file"), rel))
+	}
 	return out, err
 }
 

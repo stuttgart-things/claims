@@ -20,7 +20,10 @@ secrets/<lab>/<mount>/<path>.enc.yaml   <=>   <mount>/<path>  (KV v2, in the Vau
 secrets/labul/kv/machinery-dev/argocd-oidc.enc.yaml   <=>   kv/machinery-dev/argocd-oidc
 ```
 
-No mapping configuration. `claims secret path` converts both ways, and every command
+No mapping configuration. Only files below `secrets/<lab>/<mount>/` belong to the layout:
+the flat bootstrap credentials `secrets/*.enc.yaml` of the fleet repository stay as they
+are, and claims leaves every file outside the layout alone (directory walks skip them
+with a note). `claims secret path` converts both ways, and every command
 accepts either form (a Vault path needs the lab: `--lab`, `$CLAIMS_LAB`, or
 `claims secret vault use <lab>`).
 
@@ -67,6 +70,12 @@ the exact path. A pure slug (`/` → `-`) would map `kv/a-b` and `kv/a/b` to the
 
 The namespace is `vault-sync` (phase 1), `--namespace` for files claims creates;
 existing files keep theirs.
+
+Phase 1 reads the files through the sops-secrets-operator (`SopsSecretManifest`,
+`sops.stuttgart-things.com/v1alpha2`), which sets the target Secret's name and namespace
+itself (`target.nameOverride` / `target.namespace`, crossplane-configurations#572
+"Decisions"). The name and namespace in the file are therefore only a deterministic
+default, not what the cluster ends up with.
 
 ## .sops.yaml: one recipient per lab plus the recovery recipient
 
