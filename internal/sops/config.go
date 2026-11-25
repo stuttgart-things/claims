@@ -115,13 +115,18 @@ func (c *Config) RuleFor(rel string) (*Rule, error) {
 	return nil, fmt.Errorf("%s has no creation rule for %s: add one, e.g. path_regex: ^secrets/<lab>/.*\\.enc\\.yaml$ with the lab's and the recovery recipient (see docs/13-secrets.md)", c.Path, rel)
 }
 
-// SharedRecipients returns the recipients common to every rule whose
-// path_regex mentions "secrets/": with two or more lab rules, these are the
-// offline recovery recipient(s). nil when there are fewer than two such rules.
+// labRulePattern finds the per-lab rules: a path_regex naming a directory
+// below secrets/ (secrets/labul/...), not a catch-all like ^secrets/.*.
+var labRulePattern = regexp.MustCompile(`secrets/[a-z0-9][a-z0-9-]*/`)
+
+// SharedRecipients returns the recipients common to every per-lab rule
+// (path_regex secrets/<lab>/...): with two or more lab rules, these are the
+// offline recovery recipient(s). Catch-all rules for other files below
+// secrets/ do not count. nil when there are fewer than two lab rules.
 func (c *Config) SharedRecipients() []string {
 	var rules []Rule
 	for _, r := range c.Rules {
-		if strings.Contains(r.PathRegex, "secrets/") {
+		if labRulePattern.MatchString(r.PathRegex) {
 			rules = append(rules, r)
 		}
 	}
