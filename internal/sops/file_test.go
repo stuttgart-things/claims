@@ -33,6 +33,23 @@ func TestConfigRuleFor(t *testing.T) {
 	if len(shared) != 1 || shared[0] != keys.Recovery.Recipient().String() {
 		t.Fatalf("shared = %v", shared)
 	}
+
+	// A catch-all for the other files below secrets/ (without the recovery
+	// key, as in the fleet repository) does not hide the recovery key.
+	data, _ := os.ReadFile(filepath.Join(root, ".sops.yaml"))
+	data = append(data, []byte("  - path_regex: ^secrets/.*\\.enc\\.yaml$\n    age: age1projectkey\n")...)
+	if err := os.WriteFile(filepath.Join(root, ".sops.yaml"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err = sops.LoadConfig(root); err != nil {
+		t.Fatal(err)
+	}
+	if shared := cfg.SharedRecipients(); len(shared) != 1 || shared[0] != keys.Recovery.Recipient().String() {
+		t.Fatalf("with catch-all: shared = %v", shared)
+	}
+	if r, _ := cfg.RuleFor("secrets/flat.enc.yaml"); r == nil || r.Index != 2 {
+		t.Fatalf("catch-all rule = %+v", r)
+	}
 }
 
 func TestConfigKeyGroupsAndList(t *testing.T) {
