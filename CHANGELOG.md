@@ -1,3 +1,10 @@
+# [0.32.0](https://github.com/stuttgart-things/claims/compare/v0.31.0...v0.32.0) (2026-11-25)
+
+
+### Features
+
+* **secret:** claims secret – SOPS in git as master, Vault at runtime ([#139](https://github.com/stuttgart-things/claims/issues/139)) ([978b33b](https://github.com/stuttgart-things/claims/commit/978b33b47b9095260ea1530748cf51980fe0f03c)), closes [#122](https://github.com/stuttgart-things/claims/issues/122)
+
 # [0.31.0](https://github.com/stuttgart-things/claims/compare/v0.30.1...v0.31.0) (2026-11-23)
 
 
